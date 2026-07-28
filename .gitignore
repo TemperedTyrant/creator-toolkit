@@ -6,7 +6,13 @@ obj/
 TestResults/
 coverage/
 .env
+.env.*
+!.env.example
 *.db
 *.db-shm
 *.db-wal
 data/
+*.log
+*.bak
+*.backup
+secrets/
