@@ -13,6 +13,13 @@ public sealed record AuditEvent(
 public enum AuditEventCode
 {
     ProtectedOperation = 1,
+    BootstrapCapabilityCreated = 2,
+    InitialOwnerCreated = 3,
+    LoginSucceeded = 4,
+    LogoutSucceeded = 5,
+    PasswordChanged = 6,
+    LoginRejected = 7,
+    PasswordChangeRejected = 8,
 }
 
 public enum AuditOutcome
@@ -26,4 +33,9 @@ public enum AuditReasonCode
 {
     Conflict = 1,
     UnexpectedFailure = 2,
+    Replaced = 3,
+    InvalidCredentials = 4,
+    LockedOut = 5,
+    Disabled = 6,
+    ValidationFailed = 7,
 }

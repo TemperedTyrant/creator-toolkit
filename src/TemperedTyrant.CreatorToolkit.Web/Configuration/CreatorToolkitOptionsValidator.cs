@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace TemperedTyrant.CreatorToolkit.Web.Configuration;
 
 public static class CreatorToolkitOptionsValidator
@@ -29,8 +31,14 @@ public static class CreatorToolkitOptionsValidator
         }
         string? configuredPublicUrl = configuration["PublicUrl"];
         Uri? publicUrl = ValidatePublicUrl(configuredPublicUrl);
+        IReadOnlyList<IPAddress> trustedProxies = ValidateTrustedProxies(configuration);
+        IReadOnlyList<IPNetwork> trustedNetworks = ValidateTrustedNetworks(configuration);
 
-        return new CreatorToolkitOptions(dataDirectory, publicUrl);
+        return new CreatorToolkitOptions(
+            dataDirectory,
+            publicUrl,
+            trustedProxies,
+            trustedNetworks);
     }
 
     private static Uri? ValidatePublicUrl(string? configuredPublicUrl)
@@ -61,5 +69,45 @@ public static class CreatorToolkitOptionsValidator
         }
 
         return publicUrl;
+    }
+
+    private static List<IPAddress> ValidateTrustedProxies(
+        IConfiguration configuration)
+    {
+        List<IPAddress> proxies = [];
+        foreach (IConfigurationSection child in configuration
+            .GetSection("TrustedProxies")
+            .GetChildren())
+        {
+            if (!IPAddress.TryParse(child.Value, out IPAddress? address))
+            {
+                throw new InvalidOperationException(
+                    "Each TrustedProxies entry must be an IP address.");
+            }
+
+            proxies.Add(address);
+        }
+
+        return proxies;
+    }
+
+    private static List<IPNetwork> ValidateTrustedNetworks(
+        IConfiguration configuration)
+    {
+        List<IPNetwork> networks = [];
+        foreach (IConfigurationSection child in configuration
+            .GetSection("TrustedNetworks")
+            .GetChildren())
+        {
+            if (!IPNetwork.TryParse(child.Value, out IPNetwork network))
+            {
+                throw new InvalidOperationException(
+                    "Each TrustedNetworks entry must use CIDR notation.");
+            }
+
+            networks.Add(network);
+        }
+
+        return networks;
     }
 }

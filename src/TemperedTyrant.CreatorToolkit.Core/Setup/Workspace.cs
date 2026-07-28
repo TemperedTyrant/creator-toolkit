@@ -15,4 +15,13 @@ public sealed class Workspace
     public DateTimeOffset CreatedAtUtc { get; private set; }
 
     public long Revision { get; private set; }
+
+    public static Workspace Create(DateTimeOffset createdAtUtc)
+    {
+        return new Workspace
+        {
+            CreatedAtUtc = createdAtUtc,
+            TimeZoneId = "Etc/UTC",
+        };
+    }
 }

@@ -13,7 +13,8 @@ internal static class TestServices
         string dataDirectory,
         ICollection<string>? logMessages = null,
         TimeProvider? timeProvider = null,
-        IDiagnosticReferenceGenerator? diagnosticReferenceGenerator = null)
+        IDiagnosticReferenceGenerator? diagnosticReferenceGenerator = null,
+        Action<IServiceCollection>? configureServices = null)
     {
         ServiceCollection services = new();
         services.AddLogging(
@@ -35,6 +36,7 @@ internal static class TestServices
             services.RemoveAll<IDiagnosticReferenceGenerator>();
             services.AddSingleton(diagnosticReferenceGenerator);
         }
+        configureServices?.Invoke(services);
 
         return services.BuildServiceProvider(validateScopes: true);
     }

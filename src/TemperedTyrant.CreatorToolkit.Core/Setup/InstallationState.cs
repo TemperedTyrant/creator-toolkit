@@ -13,4 +13,14 @@ public sealed class InstallationState
     public DateTimeOffset? InitializedAtUtc { get; private set; }
 
     public long Revision { get; private set; }
+
+    public void MarkInitialized(DateTimeOffset initializedAtUtc)
+    {
+        if (InitializedAtUtc is not null)
+        {
+            throw new InvalidOperationException("The installation is already initialized.");
+        }
+
+        InitializedAtUtc = initializedAtUtc;
+    }
 }

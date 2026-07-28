@@ -11,4 +11,24 @@ public sealed class ApplicationUser : IdentityUser<Guid>
     public DateTimeOffset CreatedAtUtc { get; set; }
 
     public DateTimeOffset? ActivatedAtUtc { get; set; }
+
+    public static ApplicationUser CreateInitialOwner(
+        string userName,
+        string? displayName,
+        DateTimeOffset createdAtUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userName);
+
+        return new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            UserName = userName,
+            DisplayName = string.IsNullOrWhiteSpace(displayName) ? userName : displayName,
+            IsEnabled = true,
+            LockoutEnabled = true,
+            CreatedAtUtc = createdAtUtc,
+            ActivatedAtUtc = createdAtUtc,
+            SecurityStamp = Guid.NewGuid().ToString("N"),
+        };
+    }
 }

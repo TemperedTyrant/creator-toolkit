@@ -13,10 +13,10 @@ internal static class SystemRoleSeed
     {
         get
         {
-            yield return Create(OwnerId, "Owner", "owner");
-            yield return Create(AdminId, "Admin", "admin");
-            yield return Create(EditorId, "Editor", "editor");
-            yield return Create(ViewerId, "Viewer", "viewer");
+            yield return Create(OwnerId, SystemRoles.Owner, "owner");
+            yield return Create(AdminId, SystemRoles.Admin, "admin");
+            yield return Create(EditorId, SystemRoles.Editor, "editor");
+            yield return Create(ViewerId, SystemRoles.Viewer, "viewer");
         }
     }
 

@@ -23,6 +23,8 @@ public sealed class ConfigurationTests
 
         Assert.Equal(Path.Combine(root.Path, "local-data"), options.DataDirectory);
         Assert.Null(options.PublicUrl);
+        Assert.Empty(options.TrustedProxies);
+        Assert.Empty(options.TrustedNetworks);
     }
 
     [Theory]
@@ -79,6 +81,38 @@ public sealed class ConfigurationTests
         InvalidOperationException urlException = Assert.Throws<InvalidOperationException>(
             () => CreatorToolkitOptionsValidator.GetValidated(invalidUrl, root.Path));
         Assert.DoesNotContain(urlSecret, urlException.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TrustedForwardingSourcesMustBeExplicitValidAddressesOrNetworks()
+    {
+        using TestDataDirectory root = new();
+        IConfiguration valid = new ConfigurationBuilder()
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["TrustedProxies:0"] = "192.0.2.10",
+                    ["TrustedNetworks:0"] = "198.51.100.0/24",
+                })
+            .Build();
+
+        CreatorToolkitOptions options =
+            CreatorToolkitOptionsValidator.GetValidated(valid, root.Path);
+
+        Assert.Equal("192.0.2.10", Assert.Single(options.TrustedProxies).ToString());
+        Assert.Equal("198.51.100.0/24", Assert.Single(options.TrustedNetworks).ToString());
+
+        const string marker = "proxy-secret-marker";
+        IConfiguration invalid = new ConfigurationBuilder()
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["TrustedProxies:0"] = marker,
+                })
+            .Build();
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => CreatorToolkitOptionsValidator.GetValidated(invalid, root.Path));
+        Assert.DoesNotContain(marker, exception.ToString(), StringComparison.Ordinal);
     }
 
     private static IConfiguration CreateConfiguration(string publicUrl)

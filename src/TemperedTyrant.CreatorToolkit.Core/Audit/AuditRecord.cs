@@ -35,6 +35,14 @@ public sealed class AuditRecord
             EventCode = auditEvent.EventCode switch
             {
                 AuditEventCode.ProtectedOperation => "security.protected-operation",
+                AuditEventCode.BootstrapCapabilityCreated =>
+                    "security.bootstrap-capability-created",
+                AuditEventCode.InitialOwnerCreated => "identity.initial-owner-created",
+                AuditEventCode.LoginSucceeded => "identity.login-succeeded",
+                AuditEventCode.LogoutSucceeded => "identity.logout-succeeded",
+                AuditEventCode.PasswordChanged => "identity.password-changed",
+                AuditEventCode.LoginRejected => "identity.login-rejected",
+                AuditEventCode.PasswordChangeRejected => "identity.password-change-rejected",
                 _ => throw new ArgumentOutOfRangeException(
                     nameof(auditEvent),
                     "The audit event code is not supported."),
@@ -55,6 +63,11 @@ public sealed class AuditRecord
                 null => null,
                 AuditReasonCode.Conflict => "conflict",
                 AuditReasonCode.UnexpectedFailure => "unexpected-failure",
+                AuditReasonCode.Replaced => "replaced",
+                AuditReasonCode.InvalidCredentials => "invalid-credentials",
+                AuditReasonCode.LockedOut => "locked-out",
+                AuditReasonCode.Disabled => "disabled",
+                AuditReasonCode.ValidationFailed => "validation-failed",
                 _ => throw new ArgumentOutOfRangeException(
                     nameof(auditEvent),
                     "The audit reason code is not supported."),

@@ -47,6 +47,19 @@ The bootstrap credential:
 - is consumed atomically with Owner and workspace creation;
 - is permanently unavailable after successful initialization.
 
+`creator-toolkit bootstrap-owner` uses the short security-operation lock and
+can run while the web host holds its singleton lock. It generates 32 random
+bytes, base64url-encodes them, stores only the SHA-256 hash, and emits the raw
+value only to direct command output. When `CREATOR_TOOLKIT_PUBLICURL` is set,
+the output URL carries the value in `/Setup#token=...`; otherwise the route and
+value are printed separately. The Setup page's same-origin external script
+removes the fragment with `history.replaceState` before retaining it in the
+manual token form control. The value is submitted only in a POST body and is
+not stored in browser storage, a query, a path, rendered markup, logging,
+diagnostics, or audit data. Setup responses use `no-store` and `no-referrer`.
+Setup accepts only the canonical 43-character unpadded base64url encoding of
+exactly 32 bytes.
+
 The setup handler returns an unavailable/not-found response after initialization
 and must not reveal whether a guessed token was close or previously valid.
 
@@ -57,16 +70,39 @@ recovery token primitives, security stamps, lockout behavior, roles, and secure
 cookie integration. Do not build custom password hashing, login cookies, bearer
 tokens, or authentication token formats.
 
+Local accounts require a username and login accepts that username only. Email
+is optional and is not a login or verification requirement. Passwords contain
+15 through 128 Unicode scalar values. They are NFC-normalized consistently
+before counting, common-password validation, framework hashing, and framework
+verification, but are never trimmed, truncated, case-folded, or subjected to
+composition rules. The Identity password hasher remains the standard framework
+hasher behind a normalization-only delegating wrapper, preserving its hash
+format and rehash behavior.
+
+The common-password check compares only a complete candidate,
+case-insensitively. It also treats complete project, username, and display-name
+context values as disallowed passwords; it does not use substring matching or
+strength scoring. The embedded SecLists snapshot is identified, checksummed,
+and attributed in `THIRD_PARTY_NOTICES.md`. It is a common-password list, not a
+claim of comprehensive breach detection.
+
 Authentication requirements include:
 
 - HTTPS-aware Secure cookies, HttpOnly, and an appropriate SameSite mode;
 - antiforgery validation on state-changing browser requests;
 - login throttling/lockout without account enumeration;
 - generic login and recovery responses;
-- regular security-stamp validation;
+- security-stamp validation on every authenticated request;
 - session invalidation after password reset, disablement, role change, or
   ownership transfer;
 - rotation of framework Data Protection keys according to supported defaults.
+
+Login and Setup use separate POST-only rate-limit partitions. The partition key
+uses the effective remote address only after forwarded headers have been
+accepted from an explicitly configured trusted proxy or network. Safe GET
+requests do not consume these mutation limits. Authentication cookies validate
+the security stamp on every authenticated request and also reject a disabled
+account even if its stamp was not changed.
 
 Only the Owner creates users. A new user receives a random opaque setup
 capability that expires after 24 hours and is single-use. Only a hash is stored.

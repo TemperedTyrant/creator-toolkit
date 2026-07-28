@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,9 +10,11 @@ using TemperedTyrant.CreatorToolkit.Core.Diagnostics;
 using TemperedTyrant.CreatorToolkit.Core.Security;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Audit;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Diagnostics;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
 using TemperedTyrant.CreatorToolkit.Infrastructure.ProcessCoordination;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Security;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Setup;
 
 namespace TemperedTyrant.CreatorToolkit.Infrastructure;
 
@@ -59,6 +62,35 @@ public static class InfrastructureServiceCollectionExtensions
                 .UseSqlite(connectionString)
                 .AddInterceptors(connectionInterceptor));
         services
+            .AddIdentityCore<ApplicationUser>(
+                options =>
+                {
+                    options.User.RequireUniqueEmail = false;
+                    options.SignIn.RequireConfirmedAccount = false;
+                    options.SignIn.RequireConfirmedEmail = false;
+                    options.SignIn.RequireConfirmedPhoneNumber = false;
+                    options.Password.RequiredLength =
+                        CreatorToolkitPasswordValidator.MinimumScalarCount;
+                    options.Password.RequiredUniqueChars = 1;
+                    options.Password.RequireUppercase = false;
+                    options.Password.RequireLowercase = false;
+                    options.Password.RequireDigit = false;
+                    options.Password.RequireNonAlphanumeric = false;
+                    options.Lockout.AllowedForNewUsers = true;
+                    options.Lockout.MaxFailedAccessAttempts = 5;
+                    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+                })
+            .AddRoles<IdentityRole<Guid>>()
+            .AddEntityFrameworkStores<CreatorToolkitDbContext>()
+            .AddSignInManager();
+        services.RemoveAll<IPasswordHasher<ApplicationUser>>();
+        services.AddScoped<PasswordHasher<ApplicationUser>>();
+        services.AddScoped<IPasswordHasher<ApplicationUser>, NfcPasswordHasher>();
+        services.RemoveAll<IPasswordValidator<ApplicationUser>>();
+        services.AddScoped<CreatorToolkitPasswordValidator>();
+        services.AddScoped<IPasswordValidator<ApplicationUser>>(
+            provider => provider.GetRequiredService<CreatorToolkitPasswordValidator>());
+        services
             .AddDataProtection()
             .SetApplicationName("TemperedTyrant.CreatorToolkit")
             .PersistKeysToFileSystem(new DirectoryInfo(layout.KeyRingPath));
@@ -74,6 +106,8 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<DiagnosticPersistence>();
         services.AddSingleton<IDiagnosticRecorder, BestEffortDiagnosticRecorder>();
         services.AddScoped<ISecretStore, DataProtectionSecretStore>();
+        services.AddScoped<BootstrapCapabilityIssuer>();
+        services.AddScoped<InitialOwnerSetupService>();
 
         return services;
     }

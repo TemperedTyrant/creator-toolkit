@@ -23,4 +23,8 @@
     <!-- Keep the embedded native SQLite asset explicit and independently auditable. -->
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
   </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Identity/CommonPasswords/seclists-2026.1-10k-most-common.txt" />
+  </ItemGroup>
 </Project>

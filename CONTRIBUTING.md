@@ -52,6 +52,16 @@ docker compose config --quiet
 Additional integration or multi-architecture checks may be required by the
 affected area. The Compose command does not apply until container files exist.
 
+The Setup capability-leakage test uses the pinned Playwright test package and a
+real headless Chromium process. After the first build, install that matching
+browser runtime once before `dotnet test`:
+
+```sh
+pwsh tests/TemperedTyrant.CreatorToolkit.IntegrationTests/bin/Debug/net10.0/playwright.ps1 install chromium
+```
+
+This browser is test tooling only and is not an application runtime dependency.
+
 Some operating-system distributions package .NET reference packs without
 optional NuGet package-pruning metadata. `Directory.Build.props` enables
 `AllowMissingPrunePackageData` solely as a build-environment compatibility
