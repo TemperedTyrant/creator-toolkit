@@ -16,9 +16,9 @@ The project is licensed under `AGPL-3.0-only`.
 
 ## Current status
 
-The repository is in its documentation and architecture phase. Do not add
-application source code until the repository roadmap or a maintainer request
-explicitly starts an implementation milestone.
+The repository is in milestone 1 application-foundation development. Add
+application source code only within an explicitly authorized implementation
+checkpoint; future milestone work remains documentation-only until approved.
 
 ## Expected layout
 

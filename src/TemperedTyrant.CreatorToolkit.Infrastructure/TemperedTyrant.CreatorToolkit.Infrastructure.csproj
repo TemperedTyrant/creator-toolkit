@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>TemperedTyrant.CreatorToolkit.Infrastructure</AssemblyName>
+    <RootNamespace>TemperedTyrant.CreatorToolkit.Infrastructure</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../TemperedTyrant.CreatorToolkit.Core/TemperedTyrant.CreatorToolkit.Core.csproj" />
+  </ItemGroup>
+</Project>

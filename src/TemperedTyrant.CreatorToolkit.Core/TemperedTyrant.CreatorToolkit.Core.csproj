@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>TemperedTyrant.CreatorToolkit.Core</AssemblyName>
+    <RootNamespace>TemperedTyrant.CreatorToolkit.Core</RootNamespace>
+  </PropertyGroup>
+</Project>
