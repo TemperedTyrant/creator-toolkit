@@ -3,7 +3,12 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Setup;
 using TemperedTyrant.CreatorToolkit.IntegrationTests.TestSupport;
 
 namespace TemperedTyrant.CreatorToolkit.IntegrationTests.Web;
@@ -11,6 +16,61 @@ namespace TemperedTyrant.CreatorToolkit.IntegrationTests.Web;
 public sealed class SetupBrowserLeakageTests
 {
     private const string ValidPassword = "mild river orbit velvet canyon";
+
+    [Fact]
+    public async Task ActivationFragmentIsScrubbedAndSentOnlyInPostBody()
+    {
+        using TestDataDirectory data = new();
+        string rawCapability;
+        await using (ServiceProvider provider = TestServices.Create(data.Path))
+        {
+            await TestServices.InitializeAsync(provider);
+            Guid ownerId = await InitializeOwnerAsync(provider, "activation-browser-bootstrap");
+            await using AsyncServiceScope scope = provider.CreateAsyncScope();
+            UserLifecycleResult pending = await scope.ServiceProvider
+                .GetRequiredService<UserLifecycleService>()
+                .CreatePendingAsync(
+                    ownerId,
+                    "browser-activation-user",
+                    null,
+                    SystemRoles.Editor);
+            Assert.Equal(UserLifecycleStatus.Succeeded, pending.Status);
+            rawCapability = pending.OneTimeActivationCapability!;
+        }
+
+        await AssertCapabilityBrowserTransportAsync(
+            data.Path,
+            rawCapability,
+            "/Account/Activate",
+            "Password",
+            "ConfirmPassword",
+            "Activate account");
+    }
+
+    [Fact]
+    public async Task OwnerRecoveryFragmentIsScrubbedAndSentOnlyInPostBody()
+    {
+        using TestDataDirectory data = new();
+        string rawCapability = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(
+            SHA256.HashData(Encoding.UTF8.GetBytes("browser-owner-recovery")));
+        await using (ServiceProvider provider = TestServices.Create(data.Path))
+        {
+            await TestServices.InitializeAsync(provider);
+            await InitializeOwnerAsync(provider, "recovery-browser-bootstrap");
+            await using AsyncServiceScope scope = provider.CreateAsyncScope();
+            await scope.ServiceProvider
+                .GetRequiredService<OwnerRecoveryIssuer>()
+                .IssueAsync(SHA256.HashData(Encoding.UTF8.GetBytes(rawCapability)));
+        }
+
+        await AssertCapabilityBrowserTransportAsync(
+            data.Path,
+            rawCapability,
+            "/Account/RecoverOwner",
+            "NewPassword",
+            "ConfirmPassword",
+            "Reset Owner password");
+    }
 
     [Fact]
     public async Task CapabilityFragmentIsScrubbedAndSentOnlyInSetupPostBody()
@@ -120,6 +180,134 @@ public sealed class SetupBrowserLeakageTests
         }
     }
 
+    private static async Task AssertCapabilityBrowserTransportAsync(
+        string dataDirectory,
+        string rawCapability,
+        string route,
+        string passwordField,
+        string confirmationField,
+        string buttonName)
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string applicationAssembly = typeof(Program).Assembly.Location;
+        int port = ReserveLoopbackPort();
+        Uri origin = new($"http://127.0.0.1:{port}");
+        using Process host = StartHost(
+            repositoryRoot,
+            applicationAssembly,
+            dataDirectory,
+            origin);
+        Task hostOutput = host.StandardOutput.ReadToEndAsync();
+        Task hostError = host.StandardError.ReadToEndAsync();
+
+        try
+        {
+            await WaitForHostAsync(origin, host, route);
+            using IPlaywright playwright = await Playwright.CreateAsync();
+            await using IBrowser browser = await playwright.Chromium.LaunchAsync(
+                new BrowserTypeLaunchOptions
+                {
+                    Headless = true,
+                });
+            IPage page = await browser.NewPageAsync();
+            bool capabilitySeenInPostBody = false;
+            bool capabilitySeenInPathQueryOrHeaders = false;
+            page.Request += (_, request) =>
+            {
+                Uri requestUri = new(request.Url);
+                capabilitySeenInPathQueryOrHeaders |=
+                    requestUri.AbsolutePath.Contains(rawCapability, StringComparison.Ordinal)
+                    || requestUri.Query.Contains(rawCapability, StringComparison.Ordinal)
+                    || request.Headers.Values.Any(
+                        value => value.Contains(rawCapability, StringComparison.Ordinal));
+                if (request.Method == HttpMethod.Post.Method
+                    && requestUri.AbsolutePath == route
+                    && request.PostData?.Contains(rawCapability, StringComparison.Ordinal) == true)
+                {
+                    capabilitySeenInPostBody = true;
+                }
+            };
+
+            await page.GotoAsync(
+                $"{origin.AbsoluteUri.TrimEnd('/')}{route}#token={rawCapability}",
+                new PageGotoOptions
+                {
+                    WaitUntil = WaitUntilState.NetworkIdle,
+                });
+            Assert.DoesNotContain(rawCapability, page.Url, StringComparison.Ordinal);
+            Assert.DoesNotContain("#", page.Url, StringComparison.Ordinal);
+            Assert.True(
+                FixedTimeEquals(
+                    rawCapability,
+                    await page.Locator("#Capability").InputValueAsync()));
+            Assert.Null(
+                await page.Locator("#Capability").GetAttributeAsync("value"));
+            Assert.Equal(0, await page.EvaluateAsync<int>("() => localStorage.length"));
+            Assert.Equal(0, await page.EvaluateAsync<int>("() => sessionStorage.length"));
+
+            await page.Locator($"#{passwordField}").FillAsync(ValidPassword);
+            await page.Locator($"#{confirmationField}").FillAsync(ValidPassword);
+            await Task.WhenAll(
+                page.WaitForURLAsync("**/Login"),
+                page.GetByRole(
+                    AriaRole.Button,
+                    new() { Name = buttonName }).ClickAsync());
+
+            Assert.True(capabilitySeenInPostBody);
+            Assert.False(capabilitySeenInPathQueryOrHeaders);
+            Assert.DoesNotContain(rawCapability, page.Url, StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                rawCapability,
+                await page.ContentAsync(),
+                StringComparison.Ordinal);
+            Assert.Equal(0, await page.EvaluateAsync<int>("() => localStorage.length"));
+            Assert.Equal(0, await page.EvaluateAsync<int>("() => sessionStorage.length"));
+            await page.GoBackAsync(
+                new PageGoBackOptions
+                {
+                    WaitUntil = WaitUntilState.DOMContentLoaded,
+                });
+            Assert.DoesNotContain(rawCapability, page.Url, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (!host.HasExited)
+            {
+                host.Kill(entireProcessTree: true);
+                await host.WaitForExitAsync();
+            }
+
+            await Task.WhenAll(hostOutput, hostError);
+        }
+    }
+
+    private static async Task<Guid> InitializeOwnerAsync(
+        ServiceProvider provider,
+        string capabilitySeed)
+    {
+        string rawCapability = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(
+            SHA256.HashData(Encoding.UTF8.GetBytes(capabilitySeed)));
+        await using AsyncServiceScope scope = provider.CreateAsyncScope();
+        await scope.ServiceProvider
+            .GetRequiredService<BootstrapCapabilityIssuer>()
+            .IssueAsync(SHA256.HashData(Encoding.UTF8.GetBytes(rawCapability)));
+        Assert.Equal(
+            InitialOwnerSetupStatus.Succeeded,
+            (await scope.ServiceProvider
+                .GetRequiredService<InitialOwnerSetupService>()
+                .CreateAsync(
+                    new InitialOwnerSetupRequest(
+                        rawCapability,
+                        "owner-local",
+                        null,
+                        ValidPassword))).Status);
+        return await scope.ServiceProvider
+            .GetRequiredService<CreatorToolkitDbContext>()
+            .Users
+            .Select(user => user.Id)
+            .SingleAsync();
+    }
+
     private static async Task<string> GenerateCapabilityAsync(
         string repositoryRoot,
         string applicationAssembly,
@@ -199,7 +387,10 @@ public sealed class SetupBrowserLeakageTests
         return startInfo;
     }
 
-    private static async Task WaitForHostAsync(Uri origin, Process host)
+    private static async Task WaitForHostAsync(
+        Uri origin,
+        Process host,
+        string readyPath = "/Setup")
     {
         using HttpClient client = new()
         {
@@ -215,7 +406,7 @@ public sealed class SetupBrowserLeakageTests
 
             try
             {
-                using HttpResponseMessage response = await client.GetAsync("/Setup");
+                using HttpResponseMessage response = await client.GetAsync(readyPath);
                 if (response.StatusCode == HttpStatusCode.OK)
                 {
                     return;

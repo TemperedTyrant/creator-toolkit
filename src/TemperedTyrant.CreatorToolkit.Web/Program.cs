@@ -71,6 +71,12 @@ builder.Services.AddAuthorization(
                 SystemRoles.Admin,
                 SystemRoles.Editor,
                 SystemRoles.Viewer));
+        options.AddPolicy(
+            AuthorizationPolicies.ManageUsers,
+            policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.Admin));
+        options.AddPolicy(
+            AuthorizationPolicies.TransferOwnership,
+            policy => policy.RequireRole(SystemRoles.Owner));
         options.FallbackPolicy = options
             .GetPolicy(AuthorizationPolicies.ApplicationAccess);
     });
@@ -84,6 +90,12 @@ builder.Services.AddRateLimiter(
         options.AddPolicy(
             RateLimitPolicies.Setup,
             context => CreateSecurityFormRateLimitPartition(context, "setup"));
+        options.AddPolicy(
+            RateLimitPolicies.Activation,
+            context => CreateSecurityFormRateLimitPartition(context, "activation"));
+        options.AddPolicy(
+            RateLimitPolicies.OwnerRecovery,
+            context => CreateSecurityFormRateLimitPartition(context, "owner-recovery"));
     });
 builder.Services.Configure<ForwardedHeadersOptions>(
     options =>
@@ -115,6 +127,31 @@ if (args.Length == 1
         toolkitOptions,
         Console.Out,
         Console.Error);
+}
+
+if (args.Length >= 1
+    && string.Equals(args[0], ResetOwnerCommand.Name, StringComparison.Ordinal))
+{
+    bool validArguments = args.Length == 1
+        || (args.Length == 2
+            && string.Equals(
+                args[1],
+                ResetOwnerCommand.NonInteractiveFlag,
+                StringComparison.Ordinal));
+    if (!validArguments)
+    {
+        await Console.Error.WriteLineAsync(
+            $"Usage: creator-toolkit {ResetOwnerCommand.Name} [{ResetOwnerCommand.NonInteractiveFlag}]");
+        return 1;
+    }
+
+    return await ResetOwnerCommand.RunAsync(
+        app.Services,
+        toolkitOptions,
+        Console.In,
+        Console.Out,
+        Console.Error,
+        nonInteractive: args.Length == 2);
 }
 
 await using ApplicationHostLease hostLease = await app.Services

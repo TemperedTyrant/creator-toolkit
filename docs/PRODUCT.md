@@ -139,11 +139,12 @@ provider callback requires a reachable public HTTPS URL.
 
 ### Add a local user
 
-The Owner creates the account and role. Creator Toolkit generates a 24-hour,
-single-use setup link, shows it once, and stores only a hash of its opaque
-token. The Owner shares the link out of band. The new user chooses their own
-password. The Owner may revoke or regenerate an unused link. No email service
-or public registration is involved.
+The Owner creates Admin, Editor, or Viewer accounts. An Admin may create Editor
+or Viewer accounts. Creator Toolkit generates a 24-hour, single-use activation
+link, shows it once, and stores only a hash of its opaque token. The authorized
+creator shares the link out of band. The new user chooses their own password.
+An authorized manager may regenerate an unused link, which revokes the prior
+one. No email service or public registration is involved.
 
 ### Connect a destination
 

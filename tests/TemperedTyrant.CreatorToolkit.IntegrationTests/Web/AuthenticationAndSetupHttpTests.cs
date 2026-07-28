@@ -540,6 +540,26 @@ public sealed partial class AuthenticationAndSetupHttpTests
             viewer,
             null,
             AuthorizationPolicies.ApplicationAccess)).Succeeded);
+        Assert.True((await authorization.AuthorizeAsync(
+            owner,
+            null,
+            AuthorizationPolicies.ManageUsers)).Succeeded);
+        Assert.True((await authorization.AuthorizeAsync(
+            admin,
+            null,
+            AuthorizationPolicies.ManageUsers)).Succeeded);
+        Assert.False((await authorization.AuthorizeAsync(
+            editor,
+            null,
+            AuthorizationPolicies.ManageUsers)).Succeeded);
+        Assert.True((await authorization.AuthorizeAsync(
+            owner,
+            null,
+            AuthorizationPolicies.TransferOwnership)).Succeeded);
+        Assert.False((await authorization.AuthorizeAsync(
+            admin,
+            null,
+            AuthorizationPolicies.TransferOwnership)).Succeeded);
     }
 
     private static async Task AssertCookieFlagsAsync(

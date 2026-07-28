@@ -39,9 +39,13 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
             .GetEndpoint()?
             .Metadata
             .GetMetadata<SetupSecurityHeaderProfileAttribute>() is not null;
+        bool isCapabilityEndpoint = context
+            .GetEndpoint()?
+            .Metadata
+            .GetMetadata<CapabilitySecurityHeaderProfileAttribute>() is not null;
 
         context.Response.Headers.ContentSecurityPolicy =
-            isSetupEndpoint
+            isSetupEndpoint || isCapabilityEndpoint
                 ? SetupContentSecurityPolicy
                 : isSensitiveEndpoint
                 ? SensitiveContentSecurityPolicy
@@ -51,7 +55,7 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
         context.Response.Headers["Permissions-Policy"] =
             "camera=(), microphone=(), geolocation=()";
 
-        if (isSensitiveEndpoint || isSetupEndpoint)
+        if (isSensitiveEndpoint || isSetupEndpoint || isCapabilityEndpoint)
         {
             context.Response.Headers.CacheControl = "no-store";
             context.Response.Headers.Pragma = "no-cache";

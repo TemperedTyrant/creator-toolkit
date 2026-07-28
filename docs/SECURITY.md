@@ -104,11 +104,13 @@ requests do not consume these mutation limits. Authentication cookies validate
 the security stamp on every authenticated request and also reject a disabled
 account even if its stamp was not changed.
 
-Only the Owner creates users. A new user receives a random opaque setup
-capability that expires after 24 hours and is single-use. Only a hash is stored.
-The raw setup link is displayed once to the Owner and is never logged. Revoking
-or regenerating it invalidates the prior value. The user chooses their own
-password.
+The Owner may create Admin, Editor, and Viewer accounts. An Admin may create
+Editor and Viewer accounts only. A new pending user receives a random opaque
+activation capability that expires after 24 hours and is single-use. Only its
+hash and fixed lifecycle metadata are stored. The raw activation link is
+displayed once to the authorized creator and is never logged or retrievable
+later. Regeneration explicitly revokes the prior value. The user chooses their
+own password during atomic activation.
 
 An operator with container access can invoke an Owner recovery command. Recovery
 must create a cryptographically random, short-lived, one-time opaque capability,
@@ -119,11 +121,38 @@ sent through normal application logging. The recovery handler uses generic
 responses for invalid, expired, used, or revoked values. Recovery must not print
 an existing password or connector credential.
 
+`creator-toolkit reset-owner` requires the operator to type `RESET OWNER`.
+Automation may use the explicit `--yes` flag. Issuance works alongside the web
+host through the short security-operation lock, invalidates the current Owner's
+security stamp immediately, and creates a 30-minute purpose-bound recovery
+capability. Completion uses ASP.NET Core Identity password-reset facilities,
+does not alter ownership, and consumes the capability in the same transaction
+as its required audit record.
+
 ## Authorization
 
 Fixed roles are Owner, Admin, Editor, and Viewer. Central named authorization
 policies represent capabilities; role checks scattered through UI markup are
 not the security model.
+
+The user-lifecycle matrix is enforced by both Razor Page authorization and
+application services:
+
+- Owner may create and manage Admin, Editor, and Viewer accounts.
+- Admin may create and manage Editor and Viewer accounts only.
+- Editor and Viewer cannot manage accounts.
+- Only the current Owner may transfer ownership.
+
+Role changes and disablement use the target's Identity concurrency stamp.
+Ownership transfer also requires the ownership revision and current-password
+verification. The transfer transaction promotes the target, updates ownership,
+demotes the former Owner to Admin, rotates both security stamps, and stages the
+required audit records before commit.
+
+Ownership-transfer reauthentication participates in the same ASP.NET Core
+Identity access-failure and lockout state as login. Failed checks are recorded
+and audited in a committed transaction, locked accounts cannot continue
+guessing, and forwarding-header changes cannot bypass the account lockout.
 
 Every protected Razor Page handler and application-service method validates its
 policy. Background jobs revalidate state relevant to publishing, including

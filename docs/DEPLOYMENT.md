@@ -153,8 +153,15 @@ all browser sessions are unusable. The planned shape is:
 docker compose exec app creator-toolkit reset-owner
 ```
 
-It will issue a short-lived one-time recovery link, persist only a hash and
-lifecycle metadata, invalidate any prior unused recovery link and existing Owner
+The command requires `RESET OWNER` as explicit terminal confirmation. For
+noninteractive automation, pass `--yes`:
+
+```sh
+creator-toolkit reset-owner --yes
+```
+
+It issues a 30-minute one-time recovery link, persists only a hash and
+lifecycle metadata, invalidates any prior unused recovery link and existing Owner
 sessions, and append an audit record. The raw link will appear only in that
 command's terminal and never in routine logs. It will not reveal the current
 password or any provider credential. Final syntax and confirmation safeguards

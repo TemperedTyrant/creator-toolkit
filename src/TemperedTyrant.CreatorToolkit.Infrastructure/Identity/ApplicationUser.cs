@@ -31,4 +31,41 @@ public sealed class ApplicationUser : IdentityUser<Guid>
             SecurityStamp = Guid.NewGuid().ToString("N"),
         };
     }
+
+    public static ApplicationUser CreatePending(
+        string userName,
+        string? displayName,
+        DateTimeOffset createdAtUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userName);
+
+        return new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            UserName = userName,
+            DisplayName = string.IsNullOrWhiteSpace(displayName) ? userName : displayName,
+            IsEnabled = false,
+            LockoutEnabled = true,
+            CreatedAtUtc = createdAtUtc,
+            SecurityStamp = Guid.NewGuid().ToString("N"),
+        };
+    }
+
+    public void Activate(DateTimeOffset activatedAtUtc)
+    {
+        if (ActivatedAtUtc is not null)
+        {
+            throw new InvalidOperationException("The account is already active.");
+        }
+
+        if (activatedAtUtc < CreatedAtUtc)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(activatedAtUtc),
+                "An account cannot be activated before it was created.");
+        }
+
+        ActivatedAtUtc = activatedAtUtc;
+        IsEnabled = true;
+    }
 }

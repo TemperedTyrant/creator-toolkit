@@ -33,4 +33,27 @@ public sealed class Ownership
             TransferredAtUtc = transferredAtUtc,
         };
     }
+
+    public void TransferTo(Guid ownerUserId, DateTimeOffset transferredAtUtc)
+    {
+        if (ownerUserId == Guid.Empty)
+        {
+            throw new ArgumentException("An owner user identifier is required.", nameof(ownerUserId));
+        }
+
+        if (ownerUserId == OwnerUserId)
+        {
+            throw new InvalidOperationException("The target user already owns the workspace.");
+        }
+
+        if (transferredAtUtc < TransferredAtUtc)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(transferredAtUtc),
+                "Ownership cannot be transferred before the current ownership began.");
+        }
+
+        OwnerUserId = ownerUserId;
+        TransferredAtUtc = transferredAtUtc;
+    }
 }

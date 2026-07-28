@@ -106,6 +106,14 @@ Ownership transfer is a single transaction that preserves the one-Owner
 invariant. The current sole Owner cannot otherwise be disabled, deleted, or
 demoted.
 
+User-lifecycle application services enforce the role matrix independently of
+the Razor handlers. Owner can manage Admin, Editor, and Viewer accounts; Admin
+can manage Editor and Viewer accounts only. Pending activation, role changes,
+disablement, deletion, ownership transfer, and Owner recovery use the existing
+scoped Identity stores inside explicit SQLite transactions with required audit
+records. The short cross-process security-operation lock serializes competing
+capability and ownership operations without taking the web-host singleton lock.
+
 Opaque bootstrap, account-setup, and Owner-recovery credentials are capability
 tokens, not login sessions. Their random values contain no embedded claims. Only
 a cryptographic hash, purpose, subject where applicable, creation time, expiry,

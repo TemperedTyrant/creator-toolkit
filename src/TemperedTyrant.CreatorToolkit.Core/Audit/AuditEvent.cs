@@ -20,6 +20,16 @@ public enum AuditEventCode
     PasswordChanged = 6,
     LoginRejected = 7,
     PasswordChangeRejected = 8,
+    PendingUserCreated = 9,
+    ActivationCapabilityCreated = 10,
+    UserActivated = 11,
+    UserRoleChanged = 12,
+    UserDisabled = 13,
+    UserDeleted = 14,
+    OwnershipTransferred = 15,
+    OwnerRecoveryCapabilityCreated = 16,
+    OwnerRecovered = 17,
+    OwnershipTransferRejected = 18,
 }
 
 public enum AuditOutcome

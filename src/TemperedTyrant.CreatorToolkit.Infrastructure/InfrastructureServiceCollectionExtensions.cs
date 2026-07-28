@@ -82,7 +82,8 @@ public static class InfrastructureServiceCollectionExtensions
                 })
             .AddRoles<IdentityRole<Guid>>()
             .AddEntityFrameworkStores<CreatorToolkitDbContext>()
-            .AddSignInManager();
+            .AddSignInManager()
+            .AddDefaultTokenProviders();
         services.RemoveAll<IPasswordHasher<ApplicationUser>>();
         services.AddScoped<PasswordHasher<ApplicationUser>>();
         services.AddScoped<IPasswordHasher<ApplicationUser>, NfcPasswordHasher>();
@@ -108,6 +109,11 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<ISecretStore, DataProtectionSecretStore>();
         services.AddScoped<BootstrapCapabilityIssuer>();
         services.AddScoped<InitialOwnerSetupService>();
+        services.AddScoped<UserLifecycleService>();
+        services.AddScoped<AccountActivationService>();
+        services.AddScoped<OwnershipTransferService>();
+        services.AddScoped<OwnerRecoveryIssuer>();
+        services.AddScoped<OwnerRecoveryService>();
 
         return services;
     }

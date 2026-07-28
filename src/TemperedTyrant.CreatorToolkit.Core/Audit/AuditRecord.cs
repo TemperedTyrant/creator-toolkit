@@ -43,6 +43,19 @@ public sealed class AuditRecord
                 AuditEventCode.PasswordChanged => "identity.password-changed",
                 AuditEventCode.LoginRejected => "identity.login-rejected",
                 AuditEventCode.PasswordChangeRejected => "identity.password-change-rejected",
+                AuditEventCode.PendingUserCreated => "identity.pending-user-created",
+                AuditEventCode.ActivationCapabilityCreated =>
+                    "identity.activation-capability-created",
+                AuditEventCode.UserActivated => "identity.user-activated",
+                AuditEventCode.UserRoleChanged => "identity.user-role-changed",
+                AuditEventCode.UserDisabled => "identity.user-disabled",
+                AuditEventCode.UserDeleted => "identity.user-deleted",
+                AuditEventCode.OwnershipTransferred => "identity.ownership-transferred",
+                AuditEventCode.OwnerRecoveryCapabilityCreated =>
+                    "identity.owner-recovery-capability-created",
+                AuditEventCode.OwnerRecovered => "identity.owner-recovered",
+                AuditEventCode.OwnershipTransferRejected =>
+                    "identity.ownership-transfer-rejected",
                 _ => throw new ArgumentOutOfRangeException(
                     nameof(auditEvent),
                     "The audit event code is not supported."),
