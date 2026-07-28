@@ -5,7 +5,7 @@
 
 ## Context
 
-TemperedOps Creator Toolkit is a modular self-hosted toolkit for creators and
+TemperedTyrant Creator Toolkit is a modular self-hosted toolkit for creators and
 their teams. Creator Announcements will be the first implemented and released
 module, and the ten version 1 milestones remain focused on reliable
 announcement preparation and delivery.

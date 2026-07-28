@@ -1,4 +1,4 @@
-# TemperedOps Creator Toolkit roadmap
+# TemperedTyrant Creator Toolkit roadmap
 
 ## How to use this roadmap
 
@@ -25,9 +25,9 @@ Neither classification guarantees delivery.
 
 Deliver:
 
-- .NET 10 solution with `TemperedOps.CreatorToolkit.Web`,
-  `TemperedOps.CreatorToolkit.Core`, and
-  `TemperedOps.CreatorToolkit.Infrastructure` projects, plus unit and
+- .NET 10 solution with `TemperedTyrant.CreatorToolkit.Web`,
+  `TemperedTyrant.CreatorToolkit.Core`, and
+  `TemperedTyrant.CreatorToolkit.Infrastructure` projects, plus unit and
   integration test projects;
 - module folders/boundaries, baseline configuration validation, EF Core,
   SQLite migrations, and a development Compose deployment;
@@ -198,8 +198,8 @@ multi-provider failure exercise.
 
 Deliver:
 
-- **TemperedOps Creator Toolkit** release identity and `creator-toolkit`
-  executable identity without hard-coded registry or organization coordinates;
+- **TemperedTyrant Creator Toolkit** release identity and `creator-toolkit`
+  executable identity without hard-coded registry coordinates;
 - reproducible linux/amd64 and linux/arm64 images from one revision;
 - versioning, changelog, release notes, checksums/provenance where feasible, and
   source-code offer/link behavior required by AGPL;

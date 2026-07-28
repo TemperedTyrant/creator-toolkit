@@ -1,11 +1,11 @@
-# TemperedOps Creator Toolkit security design
+# TemperedTyrant Creator Toolkit security design
 
 ## Scope
 
 This document defines the intended version 1 security boundary. It supplements
 the public vulnerability-reporting policy in the repository root.
 
-TemperedOps Creator Toolkit protects one creator workspace from unauthenticated
+TemperedTyrant Creator Toolkit protects one creator workspace from unauthenticated
 visitors and from local users exceeding their assigned role. It protects stored
 connector credentials from routine database inspection and prevents them from
 appearing in supported interfaces, logs, diagnostics, or exports.

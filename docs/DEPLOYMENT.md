@@ -1,8 +1,8 @@
-# TemperedOps Creator Toolkit deployment design
+# TemperedTyrant Creator Toolkit deployment design
 
 ## Current status
 
-TemperedOps Creator Toolkit does not yet ship an application image or Compose
+TemperedTyrant Creator Toolkit does not yet ship an application image or Compose
 file. This document defines the deployment contract that milestone 1 must
 implement. Examples describe intended behavior and must not be treated as
 working commands until that milestone is complete.
@@ -204,9 +204,10 @@ revision. CI must build and smoke-test both platforms, use an open-source build
 toolchain, publish provenance/checksum information when feasible, and avoid a
 paid hosted-service dependency.
 
-Future releases use the product identity **TemperedOps Creator Toolkit** and
-the executable identifier `creator-toolkit`. Permanent registry and publisher
-coordinates are intentionally not defined in this documentation phase.
+Future releases use the product identity **TemperedTyrant Creator Toolkit** and
+the executable identifier `creator-toolkit`. The GitHub repository is
+`TemperedTyrant/creator-toolkit`. Permanent registry and package coordinates
+are intentionally not defined in this documentation phase.
 
 ## Post-v1 deployment extensions
 

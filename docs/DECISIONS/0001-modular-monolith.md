@@ -5,7 +5,7 @@
 
 ## Context
 
-TemperedOps Creator Toolkit needs a web interface, local identity and
+TemperedTyrant Creator Toolkit needs a web interface, local identity and
 authorization, trigger normalization, durable announcement publishing,
 scheduling, provider connections, health checks, and diagnostics. These
 concerns need clear boundaries, but version 1 is intended for a nontechnical
@@ -22,7 +22,7 @@ connector additions harder.
 
 ## Decision
 
-Build TemperedOps Creator Toolkit as a modular monolith targeting .NET 10 LTS
+Build TemperedTyrant Creator Toolkit as a modular monolith targeting .NET 10 LTS
 with:
 
 - ASP.NET Core Razor Pages for the server-rendered interface;

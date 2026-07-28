@@ -5,7 +5,7 @@
 
 ## Context
 
-TemperedOps Creator Toolkit version 1 stores one workspace's users,
+TemperedTyrant Creator Toolkit version 1 stores one workspace's users,
 configuration, encrypted credentials, events, announcements, approvals,
 schedules, delivery attempts, jobs, connection health, and audit records. It
 needs transactions, unique constraints, schema migrations, and durable recovery,

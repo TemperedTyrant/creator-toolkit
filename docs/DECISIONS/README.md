@@ -1,7 +1,7 @@
 # Architecture decision records
 
 Architecture decision records (ADRs) capture decisions that materially constrain
-TemperedOps Creator Toolkit's structure, operation, security, licensing, or
+TemperedTyrant Creator Toolkit's structure, operation, security, licensing, or
 compatibility. They explain why a decision was made so later contributors can
 change it deliberately rather than accidentally.
 

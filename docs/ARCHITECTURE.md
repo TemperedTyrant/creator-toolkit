@@ -1,11 +1,11 @@
-# TemperedOps Creator Toolkit architecture
+# TemperedTyrant Creator Toolkit architecture
 
 ## Status and goals
 
 This document describes the intended version 1 architecture. No application is
 implemented yet.
 
-TemperedOps Creator Toolkit will be a modular monolith built with .NET 10 LTS,
+TemperedTyrant Creator Toolkit will be a modular monolith built with .NET 10 LTS,
 ASP.NET Core Razor Pages, ASP.NET Core Identity, Entity Framework Core, SQLite,
 and hosted background services. Its Web, Core, and Infrastructure .NET projects
 will form one application, produce one deployable application container, and
@@ -49,9 +49,9 @@ The future solution uses three project-level boundaries:
 
 | Project | Responsibility |
 | --- | --- |
-| `TemperedOps.CreatorToolkit.Web` | Razor Pages, application hosting, composition, HTTP endpoints, and hosted-service lifecycle |
-| `TemperedOps.CreatorToolkit.Core` | Provider-neutral domain concepts, application contracts, authorization requirements, and use cases |
-| `TemperedOps.CreatorToolkit.Infrastructure` | EF Core persistence, SQLite jobs, secret protection, connector and trigger-source adapters, and other external integrations |
+| `TemperedTyrant.CreatorToolkit.Web` | Razor Pages, application hosting, composition, HTTP endpoints, and hosted-service lifecycle |
+| `TemperedTyrant.CreatorToolkit.Core` | Provider-neutral domain concepts, application contracts, authorization requirements, and use cases |
+| `TemperedTyrant.CreatorToolkit.Infrastructure` | EF Core persistence, SQLite jobs, secret protection, connector and trigger-source adapters, and other external integrations |
 
 These projects remain one modular monolith, one application, one process, and
 one deployable container. Project references must preserve the provider-neutral

@@ -5,7 +5,7 @@
 
 ## Context
 
-The primary TemperedOps Creator Toolkit operator is a content creator who may
+The primary TemperedTyrant Creator Toolkit operator is a content creator who may
 have limited infrastructure experience. The normal installation should be close
 to `docker compose up -d` and should work on a laptop or small server without
 Kubernetes or a public domain.

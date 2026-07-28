@@ -1,20 +1,21 @@
-# TemperedOps Creator Toolkit product definition
+# TemperedTyrant Creator Toolkit product definition
 
 ## Status
 
-TemperedOps Creator Toolkit is still in the documentation and architecture
+TemperedTyrant Creator Toolkit is still in the documentation and architecture
 phase; none of the described application behavior is implemented yet.
 
 **Self-hosted tools and automation for creators and their teams.**
 
-The public product family and future release identity is **TemperedOps Creator
+The public product family and future release identity is **TemperedTyrant Creator
 Toolkit**. The application interface may use **Creator Toolkit** with
-**A TemperedOps project**. The repository and machine-readable identifier is
-`creator-toolkit`.
+**A TemperedTyrant project**. The GitHub repository is
+`TemperedTyrant/creator-toolkit`, and the repository and machine-readable
+identifier remains `creator-toolkit`.
 
 ## Purpose
 
-TemperedOps Creator Toolkit is a free, open-source, modular self-hosted toolkit
+TemperedTyrant Creator Toolkit is a free, open-source, modular self-hosted toolkit
 for creators and their teams. Creator Announcements will be its first
 implemented and released module. In version 1, the application turns creator
 events and scheduled or manual actions into reliable announcements. It should

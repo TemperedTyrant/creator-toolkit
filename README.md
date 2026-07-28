@@ -1,15 +1,17 @@
-# TemperedOps Creator Toolkit
+# TemperedTyrant Creator Toolkit
 
 **Self-hosted tools and automation for creators and their teams.**
 
-TemperedOps Creator Toolkit is a planned free, open-source, modular self-hosted
+TemperedTyrant Creator Toolkit is a planned free, open-source, modular self-hosted
 toolkit for creators and their teams. The application interface may use
-**Creator Toolkit** with the attribution **A TemperedOps project**. The
-repository and machine-readable identifier is `creator-toolkit`.
+**Creator Toolkit** with the attribution **A TemperedTyrant project**. The
+GitHub repository is `TemperedTyrant/creator-toolkit`, and the repository and
+machine-readable identifier remains `creator-toolkit`.
 
-> [!IMPORTANT]
-> TemperedOps Creator Toolkit is currently in the documentation and architecture
-> phase. There is no runnable application or container image yet.
+> [!WARNING]
+> TemperedTyrant Creator Toolkit is in pre-alpha development.
+> The repository currently contains product and architecture documentation;
+> no usable application release is available yet.
 
 Creator Announcements is the first module that will be implemented and
 released. Version 1 remains deliberately focused on reliable creator
@@ -107,7 +109,7 @@ Do not report vulnerabilities in public issues. Follow
 ## License
 
 Copyright notices for individual contributions remain with their contributors.
-Original TemperedOps Creator Toolkit project material is licensed under the GNU
+Original TemperedTyrant Creator Toolkit project material is licensed under the GNU
 Affero General Public License version 3 only. Incorporated third-party material
 retains its identified license and attribution. See [LICENSE](LICENSE).
 

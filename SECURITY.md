@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-TemperedOps Creator Toolkit has not published a release. During pre-release
+TemperedTyrant Creator Toolkit has not published a release. During pre-release
 development, security fixes target the default branch. After the first release,
 this file will list supported release lines; until then, no released version is
 supported.
@@ -45,7 +45,7 @@ their operator's permission.
 Reports about authentication, authorization, first-run takeover, secret
 exposure, server-side request forgery, webhook authenticity, duplicate
 publishing, unsafe diagnostics, dependency compromise, and container or upgrade
-behavior are in scope when they affect TemperedOps Creator Toolkit.
+behavior are in scope when they affect TemperedTyrant Creator Toolkit.
 
 Provider policy disputes, unsupported browser automation, or vulnerabilities in
 an operator's unrelated reverse proxy or host are not project vulnerabilities,

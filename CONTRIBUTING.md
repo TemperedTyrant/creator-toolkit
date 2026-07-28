@@ -1,6 +1,6 @@
-# Contributing to TemperedOps Creator Toolkit
+# Contributing to TemperedTyrant Creator Toolkit
 
-Thank you for helping build TemperedOps Creator Toolkit. The project welcomes
+Thank you for helping build TemperedTyrant Creator Toolkit. The project welcomes
 focused bug reports, design discussion, documentation improvements, tests, and
 code once an implementation milestone is active.
 

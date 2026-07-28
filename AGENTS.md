@@ -2,7 +2,7 @@
 
 ## Repository purpose
 
-TemperedOps Creator Toolkit is a free, open-source, modular self-hosted toolkit
+TemperedTyrant Creator Toolkit is a free, open-source, modular self-hosted toolkit
 for creators and their teams.
 
 `Self-hosted tools and automation for creators and their teams.`
@@ -27,16 +27,16 @@ When implementation begins, preserve this high-level layout:
 ```text
 .
 ├── src/
-│   ├── TemperedOps.CreatorToolkit.Web/
-│   ├── TemperedOps.CreatorToolkit.Core/
-│   └── TemperedOps.CreatorToolkit.Infrastructure/
+│   ├── TemperedTyrant.CreatorToolkit.Web/
+│   ├── TemperedTyrant.CreatorToolkit.Core/
+│   └── TemperedTyrant.CreatorToolkit.Infrastructure/
 ├── tests/
-│   ├── TemperedOps.CreatorToolkit.UnitTests/
-│   └── TemperedOps.CreatorToolkit.IntegrationTests/
+│   ├── TemperedTyrant.CreatorToolkit.UnitTests/
+│   └── TemperedTyrant.CreatorToolkit.IntegrationTests/
 ├── docs/
 │   └── DECISIONS/
 ├── compose.yaml
-└── TemperedOps.CreatorToolkit.slnx
+└── TemperedTyrant.CreatorToolkit.slnx
 ```
 
 Use repository-relative paths in commands and documentation. The final solution
@@ -44,7 +44,7 @@ and project filenames may be introduced during milestone 1, but the application
 must remain a single deployable modular monolith. Multiple .NET projects enforce
 logical boundaries; they do not imply multiple applications, services,
 processes, or containers. The future root namespace is
-`TemperedOps.CreatorToolkit`, and the future CLI and executable identifier is
+`TemperedTyrant.CreatorToolkit`, and the future CLI and executable identifier is
 `creator-toolkit`.
 
 ## Expected commands
