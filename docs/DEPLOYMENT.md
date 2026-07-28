@@ -1,11 +1,11 @@
-# Deployment design
+# TemperedOps Creator Toolkit deployment design
 
 ## Current status
 
-SocialCreator does not yet ship an application image or Compose file. This
-document defines the deployment contract that milestone 1 must implement.
-Examples describe intended behavior and must not be treated as working commands
-until that milestone is complete.
+TemperedOps Creator Toolkit does not yet ship an application image or Compose
+file. This document defines the deployment contract that milestone 1 must
+implement. Examples describe intended behavior and must not be treated as
+working commands until that milestone is complete.
 
 ## Default shape
 
@@ -14,8 +14,11 @@ The supported version 1 deployment is:
 - one application container;
 - one named persistent volume;
 - SQLite as the embedded database;
-- no required external database, cache, queue, worker, or identity provider;
+- no required external database, cache, queue, or identity provider;
+- no local creator agent;
 - Linux amd64 and arm64 images.
+
+No separate worker service, process, or container. Durable background jobs run through ASP.NET Core hosted services inside the application process.
 
 Normal startup should be close to:
 
@@ -58,7 +61,7 @@ instructions but cannot create an Owner.
 The operator invokes an explicit command, planned in this form:
 
 ```sh
-docker compose exec app socialcreator bootstrap-owner
+docker compose exec app creator-toolkit bootstrap-owner
 ```
 
 The command prints a cryptographically random, single-use bootstrap value only
@@ -147,7 +150,7 @@ An operator with access to the container runtime needs a recovery path even when
 all browser sessions are unusable. The planned shape is:
 
 ```sh
-docker compose exec app socialcreator reset-owner
+docker compose exec app creator-toolkit reset-owner
 ```
 
 It will issue a short-lived one-time recovery link, persist only a hash and
@@ -184,6 +187,11 @@ credentials or sensitive detail:
 Provider connection health belongs in the authenticated interface, not the
 unauthenticated container health response.
 
+On graceful shutdown, the hosted job runner stops claiming work, observes
+cancellation, and leaves or releases recoverable SQLite leases. Expired leases
+allow crash recovery after an ungraceful stop. Durable retry state remains in
+SQLite across restarts.
+
 Logs go to stdout/stderr as structured records for Compose collection. Log
 rotation is the container runtime's responsibility. Tokens, credentials,
 webhook URLs, authorization headers, cookies, keys, and provider bodies are
@@ -195,3 +203,18 @@ Public images must support `linux/amd64` and `linux/arm64` from the same source
 revision. CI must build and smoke-test both platforms, use an open-source build
 toolchain, publish provenance/checksum information when feasible, and avoid a
 paid hosted-service dependency.
+
+Future releases use the product identity **TemperedOps Creator Toolkit** and
+the executable identifier `creator-toolkit`. Permanent registry and publisher
+coordinates are intentionally not defined in this documentation phase.
+
+## Post-v1 deployment extensions
+
+Planned authenticated browser-source pages remain part of the primary web
+application and may support OBS alerts, overlays, goals, labels, timers, and
+media presentation.
+
+An optional local creator agent remains Exploratory. It would be separately
+installed and explicitly paired only for capabilities requiring local computer
+access. It is not present in version 1, is not required by the default server
+installation, and does not change the one-container version 1 deployment.

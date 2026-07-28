@@ -5,11 +5,11 @@
 
 ## Context
 
-Version 1 stores one workspace's users, configuration, encrypted credentials,
-events, announcements, approvals, schedules, delivery attempts, jobs, connection
-health, and audit records. It needs transactions, unique constraints, schema
-migrations, and durable recovery, but it should start without a separate
-database service.
+TemperedOps Creator Toolkit version 1 stores one workspace's users,
+configuration, encrypted credentials, events, announcements, approvals,
+schedules, delivery attempts, jobs, connection health, and audit records. It
+needs transactions, unique constraints, schema migrations, and durable recovery,
+but it should start without a separate database service.
 
 The expected workload is modest and write concurrency can be bounded within one
 application process.
@@ -69,4 +69,3 @@ SQLite operations impractical. A migration design must preserve idempotency,
 audit history, encrypted credentials, and simple defaults.
 
 SPDX-License-Identifier: AGPL-3.0-only
-

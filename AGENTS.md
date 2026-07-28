@@ -2,10 +2,15 @@
 
 ## Repository purpose
 
-SocialCreator is a free, open-source, self-hosted web application for reliable
-creator announcements. It detects creator events, prepares announcements, and
-publishes them to configured destinations. It is intentionally not a generic
-enterprise social-media management suite.
+TemperedOps Creator Toolkit is a free, open-source, modular self-hosted toolkit
+for creators and their teams.
+
+`Self-hosted tools and automation for creators and their teams.`
+
+Creator Announcements will be the first implemented and released module.
+Version 1 detects creator events, prepares announcements, and publishes them
+reliably to configured destinations. Do not expand version 1 into a
+general-purpose creator suite or an enterprise social-media management product.
 
 The project is licensed under `AGPL-3.0-only`.
 
@@ -22,19 +27,25 @@ When implementation begins, preserve this high-level layout:
 ```text
 .
 ├── src/
-│   └── SocialCreator/
+│   ├── TemperedOps.CreatorToolkit.Web/
+│   ├── TemperedOps.CreatorToolkit.Core/
+│   └── TemperedOps.CreatorToolkit.Infrastructure/
 ├── tests/
-│   ├── SocialCreator.UnitTests/
-│   └── SocialCreator.IntegrationTests/
+│   ├── TemperedOps.CreatorToolkit.UnitTests/
+│   └── TemperedOps.CreatorToolkit.IntegrationTests/
 ├── docs/
 │   └── DECISIONS/
 ├── compose.yaml
-└── SocialCreator.slnx
+└── TemperedOps.CreatorToolkit.slnx
 ```
 
 Use repository-relative paths in commands and documentation. The final solution
 and project filenames may be introduced during milestone 1, but the application
-must remain a single deployable modular monolith.
+must remain a single deployable modular monolith. Multiple .NET projects enforce
+logical boundaries; they do not imply multiple applications, services,
+processes, or containers. The future root namespace is
+`TemperedOps.CreatorToolkit`, and the future CLI and executable identifier is
+`creator-toolkit`.
 
 ## Expected commands
 
@@ -63,10 +74,18 @@ claiming it passed. Never substitute a narrower check without saying so.
   Entity Framework Core, SQLite, and ASP.NET Core hosted background services.
 - Keep one application container, one named persistent volume, and one process
   boundary for version 1. Do not introduce PostgreSQL, Redis, Temporal, Kafka,
-  Kubernetes, or a separate worker.
+  or Kubernetes.
+
+No separate worker service, process, or container. Durable background jobs run through ASP.NET Core hosted services inside the application process.
 - Preserve modular-monolith boundaries. Core domain and application code must
   not depend on Discord, Bluesky, or another provider.
-- Put provider behavior behind connector or trigger-source interfaces.
+- Keep hosting and Razor Pages in Web, provider-neutral domain and application
+  behavior in Core, and persistence and provider adapters in Infrastructure.
+- Put version 1 provider behavior behind connector or trigger-source
+  interfaces. Preserve a seam for future action adapters without introducing a
+  generic action contract or workflow engine prematurely.
+- Preserve SQLite durable-job leasing, bounded retry handling, crash recovery,
+  and graceful hosted-service shutdown.
 - Use ASP.NET Core Identity for users, password hashing, recovery tokens,
   security stamps, roles, and cookie integration. Do not create custom password
   hashing, authentication cookies, or authentication token formats.
@@ -77,6 +96,8 @@ claiming it passed. Never substitute a narrower check without saying so.
   open-source license, active maintenance, multi-architecture support where
   relevant, and no paid hosted-service requirement.
 - Record architecture-significant changes as ADRs in `docs/DECISIONS/`.
+- Preserve the creator-event/action seam in ADR 0005 without implementing a
+  generic workflow engine in version 1.
 - Do not implement X or policy-bypassing browser automation. Reddit remains
   deferred until a permitted, free, and repeatable setup is confirmed.
 

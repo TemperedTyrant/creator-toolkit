@@ -1,14 +1,22 @@
-# Product definition
+# TemperedOps Creator Toolkit product definition
 
 ## Status
 
-This document defines the intended version 1 product. SocialCreator is still in
-the documentation and architecture phase; none of the described application
-behavior is implemented yet.
+TemperedOps Creator Toolkit is still in the documentation and architecture
+phase; none of the described application behavior is implemented yet.
+
+**Self-hosted tools and automation for creators and their teams.**
+
+The public product family and future release identity is **TemperedOps Creator
+Toolkit**. The application interface may use **Creator Toolkit** with
+**A TemperedOps project**. The repository and machine-readable identifier is
+`creator-toolkit`.
 
 ## Purpose
 
-SocialCreator is a free, open-source, self-hosted application that turns creator
+TemperedOps Creator Toolkit is a free, open-source, modular self-hosted toolkit
+for creators and their teams. Creator Announcements will be its first
+implemented and released module. In version 1, the application turns creator
 events and scheduled or manual actions into reliable announcements. It should
 make the path from “I went live” or “I published a video” to a set of
 destination-specific posts understandable and dependable.
@@ -22,9 +30,48 @@ The product optimizes for:
 - actionable errors and supportable diagnostics;
 - provider-policy compliance.
 
-SocialCreator is not an enterprise social-media management suite. Version 1
-will not add campaign analytics, social inboxes, comment moderation, audience
+Version 1 is not a general-purpose creator suite or an enterprise social-media
+management suite. It will not add stream alerts, overlays, soundboards, generic
+automation, campaign analytics, social inboxes, comment moderation, audience
 CRM, advertising, billing, organization hierarchies, or SaaS tenancy.
+
+## Scope commitments
+
+### Committed
+
+The ten version 1 milestones in the [roadmap](ROADMAP.md) commit to Creator
+Announcements functionality: Identity and RBAC, approvals, Discord, generic
+outgoing webhooks, Bluesky, scheduling, Twitch and YouTube event-source
+research, health, diagnostics, and release preparation.
+
+### Planned
+
+Likely post-v1 work includes:
+
+- stream alerts;
+- authenticated OBS browser-source overlays;
+- a shared asset library;
+- Generalized trigger-condition-action workflow implementation using the
+  creator-event/action seam established in ADR 0005.
+
+See [ADR 0005](DECISIONS/0005-creator-event-action-seam.md) for the seam
+established by the current architecture.
+
+### Exploratory
+
+Research-only possibilities include:
+
+- local soundboard playback;
+- global hotkeys;
+- an optional local creator agent;
+- OBS WebSocket control;
+- Stream Deck integrations;
+- chat bot and moderation utilities;
+- donation and commerce integrations;
+- desktop application integration.
+
+Planned and Exploratory items are neither release commitments nor guarantees
+and have no assigned dates.
 
 ## Intended users
 
@@ -91,11 +138,11 @@ provider callback requires a reachable public HTTPS URL.
 
 ### Add a local user
 
-The Owner creates the account and role. SocialCreator generates a 24-hour,
-single-use setup link, shows it once, and stores only a hash of its opaque token.
-The Owner shares the link out of band. The new user chooses their own password.
-The Owner may revoke or regenerate an unused link. No email service or public
-registration is involved.
+The Owner creates the account and role. Creator Toolkit generates a 24-hour,
+single-use setup link, shows it once, and stores only a hash of its opaque
+token. The Owner shares the link out of band. The new user chooses their own
+password. The Owner may revoke or regenerate an unused link. No email service
+or public registration is involved.
 
 ### Connect a destination
 
@@ -139,8 +186,8 @@ in that zone. Each schedule chooses how to handle downtime:
 - hold one missed occurrence for review;
 - publish only the latest missed occurrence.
 
-“Hold for review” is the default. SocialCreator never floods destinations with
-several stale occurrences after recovery.
+“Hold for review” is the default. Creator Toolkit never floods destinations
+with several stale occurrences after recovery.
 
 ### Diagnose a failure
 
@@ -159,7 +206,7 @@ Initial free destinations:
 
 Planned event sources:
 
-- a SocialCreator-defined signed incoming webhook;
+- a project-defined signed incoming webhook;
 - Twitch, after a free supported EventSub transport is confirmed;
 - YouTube, after a free and quota-safe push or polling design is confirmed.
 
@@ -198,3 +245,31 @@ Version 1 is successful when a nontechnical creator can:
 8. obtain useful sanitized diagnostics without exposing credentials.
 
 Reliability, clarity, and safe operation take priority over integration count.
+
+## Post-v1 extension mechanisms
+
+The primary product remains a self-hosted web application. Two extension
+mechanisms may support post-v1 modules.
+
+### Browser-source runtime
+
+Planned authenticated web pages may be designed for OBS browser sources,
+including alerts, overlays, goals, labels, timers, and media presentation.
+Their design must preserve server-side authorization, secret isolation, audit
+behavior, and sanitized diagnostics.
+
+### Optional local creator agent
+
+An exploratory, separately installed, explicitly paired component may provide
+capabilities that require access to a creator's computer:
+
+- playback through a selected local audio device;
+- global hotkeys;
+- local file access;
+- OBS WebSocket communication;
+- desktop application integration;
+- local device discovery.
+
+The local creator agent is not part of version 1 and is not required for the
+default server installation. Its future pairing, authorization, update, and
+failure model requires a separate design review.

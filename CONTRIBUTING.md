@@ -1,8 +1,8 @@
-# Contributing to SocialCreator
+# Contributing to TemperedOps Creator Toolkit
 
-Thank you for helping build SocialCreator. The project welcomes focused bug
-reports, design discussion, documentation improvements, tests, and code once an
-implementation milestone is active.
+Thank you for helping build TemperedOps Creator Toolkit. The project welcomes
+focused bug reports, design discussion, documentation improvements, tests, and
+code once an implementation milestone is active.
 
 By participating, you agree to follow the
 [Code of Conduct](CODE_OF_CONDUCT.md).
@@ -31,7 +31,11 @@ milestone.
   hosted service.
 - Preserve the one-container, one-volume, SQLite modular-monolith design unless
   an accepted ADR changes it.
+- Preserve the Web, Core, and Infrastructure project boundaries inside the
+  single application and deployable container.
 - Keep provider-specific behavior behind provider-neutral interfaces.
+- Keep version 1 focused on Creator Announcements. Planned and exploratory
+  creator-toolkit modules do not belong in the ten version 1 milestones.
 - Never bypass a provider's supported API, authentication, price, or policy.
 
 ## Future local workflow
@@ -98,4 +102,3 @@ Do not submit code or assets that cannot be distributed under compatible terms.
 
 Do not disclose a suspected vulnerability in an issue, discussion, or pull
 request. Follow [SECURITY.md](SECURITY.md).
-

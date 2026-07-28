@@ -2,9 +2,10 @@
 
 ## Supported versions
 
-SocialCreator has not published a release. During pre-release development,
-security fixes target the default branch. After the first release, this file
-will list supported release lines; until then, no released version is supported.
+TemperedOps Creator Toolkit has not published a release. During pre-release
+development, security fixes target the default branch. After the first release,
+this file will list supported release lines; until then, no released version is
+supported.
 
 ## Reporting a vulnerability
 
@@ -44,7 +45,7 @@ their operator's permission.
 Reports about authentication, authorization, first-run takeover, secret
 exposure, server-side request forgery, webhook authenticity, duplicate
 publishing, unsafe diagnostics, dependency compromise, and container or upgrade
-behavior are in scope when they affect SocialCreator.
+behavior are in scope when they affect TemperedOps Creator Toolkit.
 
 Provider policy disputes, unsupported browser automation, or vulnerabilities in
 an operator's unrelated reverse proxy or host are not project vulnerabilities,
@@ -53,4 +54,3 @@ although documentation defects that cause an unsafe default are welcome.
 The detailed design and threat model are in [docs/SECURITY.md](docs/SECURITY.md).
 
 SPDX-License-Identifier: AGPL-3.0-only
-

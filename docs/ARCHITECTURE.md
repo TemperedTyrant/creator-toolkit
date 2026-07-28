@@ -1,13 +1,14 @@
-# Architecture
+# TemperedOps Creator Toolkit architecture
 
 ## Status and goals
 
 This document describes the intended version 1 architecture. No application is
 implemented yet.
 
-SocialCreator will be a modular monolith built with .NET 10 LTS, ASP.NET Core
-Razor Pages, ASP.NET Core Identity, Entity Framework Core, SQLite, and hosted
-background services. It will produce one deployable application container and
+TemperedOps Creator Toolkit will be a modular monolith built with .NET 10 LTS,
+ASP.NET Core Razor Pages, ASP.NET Core Identity, Entity Framework Core, SQLite,
+and hosted background services. Its Web, Core, and Infrastructure .NET projects
+will form one application, produce one deployable application container, and
 use one named persistent volume.
 
 The design prioritizes:
@@ -37,12 +38,27 @@ Browser / provider callback
        in one named volume
 ```
 
-There is no separate worker, broker, cache, or database service. The web and
-background paths coordinate through durable SQLite records.
+No separate worker service, process, or container. Durable background jobs run through ASP.NET Core hosted services inside the application process.
+
+There is also no broker, cache, or database service. The web and background
+paths coordinate through durable SQLite records.
 
 ## Module boundaries
 
-The initial modules are logical boundaries within the application:
+The future solution uses three project-level boundaries:
+
+| Project | Responsibility |
+| --- | --- |
+| `TemperedOps.CreatorToolkit.Web` | Razor Pages, application hosting, composition, HTTP endpoints, and hosted-service lifecycle |
+| `TemperedOps.CreatorToolkit.Core` | Provider-neutral domain concepts, application contracts, authorization requirements, and use cases |
+| `TemperedOps.CreatorToolkit.Infrastructure` | EF Core persistence, SQLite jobs, secret protection, connector and trigger-source adapters, and other external integrations |
+
+These projects remain one modular monolith, one application, one process, and
+one deployable container. Project references must preserve the provider-neutral
+Core boundary; deployment topology does not justify collapsing the solution
+into one source project.
+
+The initial logical modules within those project boundaries are:
 
 | Module | Responsibility |
 | --- | --- |
@@ -98,7 +114,7 @@ use time, and revocation time are persisted.
 ## Conceptual model
 
 Names may be refined during implementation, but these concepts and invariants
-should remain.
+should remain for version 1.
 
 - **Workspace:** singleton configuration, including IANA time zone and Editor
   publishing policy.
@@ -131,6 +147,54 @@ should remain.
 Raw provider credentials and unsanitized payloads do not belong in domain
 objects, jobs, audit rows, or diagnostic records.
 
+## Long-term creator-event and action seam
+
+Creator Announcements remains the concrete version 1 domain. The provider-
+neutral core must nevertheless avoid defining the whole product as social
+publishing. The architectural seam established in
+[ADR 0005](DECISIONS/0005-creator-event-action-seam.md) allows later modules to
+generalize these concepts without implementing a generic workflow engine in
+version 1:
+
+- **TriggerSource:** an authenticated or trusted origin of creator signals.
+- **CreatorEvent:** a normalized creator fact that is not inherently a social
+  post.
+- **Condition:** a future rule that may determine whether an action applies.
+- **Action:** a requested effect; social publishing is one action category.
+- **ActionExecution:** the independent lifecycle of one action invocation.
+- **Connection:** configuration and protected credentials for an external or
+  paired capability.
+- **Asset:** reusable media or other creator-owned presentation material.
+- **Workflow:** a future trigger-condition-action composition.
+- **Scheduling, Audit, and Diagnostics:** shared capabilities that retain their
+  existing version 1 guarantees.
+
+A future creator event may independently publish a Discord announcement,
+publish a Bluesky post, invoke a generic webhook, display an OBS alert, play a
+sound, or control OBS.
+
+Every future action execution requires:
+
+- independent authorization;
+- execution state;
+- an execution or idempotency key;
+- duplicate-suppression semantics where possible;
+- failure classification;
+- an action-specific retry policy;
+- audit behavior;
+- diagnostic references.
+
+An action-specific retry policy must classify execution as automatically
+retryable, non-retryable, retryable only when non-execution is known, or
+manual-retry only. Sound playback, OBS scene changes, alerts, recording
+controls, and other local side effects must not be retried automatically unless
+their implementation can establish that doing so is safe. Ambiguous completion
+must not cause duplicate side effects.
+
+This seam does not replace the version 1 Announcement, Delivery,
+PublishingAttempt, or PersistentJob concepts. Generalized
+trigger-condition-action workflow implementation is Planned post-v1 work.
+
 ## Connector contracts
 
 Destination connectors will implement a provider-neutral contract equivalent
@@ -152,6 +216,9 @@ details, or secrets to the domain or normal interface.
 Trigger sources similarly normalize provider input into a creator event. Source
 adapters authenticate input before normalization and must provide a stable
 external event key.
+
+Future action adapters may build on these provider-neutral boundaries, but
+version 1 does not require a universal action contract or workflow engine.
 
 ## Event idempotency and delivery isolation
 
@@ -194,8 +261,15 @@ to a terminal failed state. Permanent and reconnect-required failures do not
 retry automatically. An authorized manual retry creates a new auditable
 execution without erasing attempt history.
 
+These automatic retry rules apply to version 1 announcement deliveries, whose
+connector contracts classify retry safety. Future action categories must use
+the action-specific retry policies defined above.
+
 Only one application instance is supported in version 1. Leases provide crash
 recovery and duplicate resistance, not a promise of multi-node scheduling.
+Hosted services stop claiming new work during graceful shutdown, honor
+cancellation, and leave or release leases so unfinished work can recover after
+restart.
 
 ## Announcement and approval state
 
@@ -275,5 +349,14 @@ application so the database and related state are consistent.
 New destinations add adapters and provider-specific tests without changing core
 announcement semantics. A need for another process, database, queue, workspace,
 or tenancy model requires a new ADR and is outside version 1.
+
+Post-v1 authenticated browser-source pages may provide OBS alerts, overlays,
+goals, labels, timers, and media presentation within the web application.
+
+An optional local creator agent is exploratory. If later designed, it would be
+separately installed and explicitly paired for local audio playback, global
+hotkeys, file access, OBS WebSocket communication, desktop application
+integration, and device discovery. It is not part of version 1 and is not
+required by the default server installation.
 
 See [the initial ADRs](DECISIONS/README.md) for the decisions behind this shape.

@@ -1,4 +1,4 @@
-# Roadmap
+# TemperedOps Creator Toolkit roadmap
 
 ## How to use this roadmap
 
@@ -10,12 +10,25 @@ hardening pass.
 
 The roadmap is directional, not a promise of release dates.
 
+## Scope classification
+
+The ten version 1 milestones below are **Committed** and remain focused on
+Creator Announcements. They include Identity and RBAC, approvals, Discord,
+generic outgoing webhooks, Bluesky, scheduling, Twitch and YouTube event-source
+research, health, diagnostics, and release preparation.
+
+The separate post-v1 roadmap contains only **Planned** and **Exploratory** work.
+Planned items are likely directions, and Exploratory items require research.
+Neither classification guarantees delivery.
+
 ## 1. Repository, application, identity, and security foundation
 
 Deliver:
 
-- .NET 10 solution with Razor Pages application, unit tests, and integration
-  tests;
+- .NET 10 solution with `TemperedOps.CreatorToolkit.Web`,
+  `TemperedOps.CreatorToolkit.Core`, and
+  `TemperedOps.CreatorToolkit.Infrastructure` projects, plus unit and
+  integration test projects;
 - module folders/boundaries, baseline configuration validation, EF Core,
   SQLite migrations, and a development Compose deployment;
 - ASP.NET Core Identity with Owner, Admin, Editor, and Viewer roles;
@@ -31,6 +44,10 @@ Deliver:
 - structured logging, diagnostic references, baseline redaction tests, and
   liveness/readiness endpoints;
 - non-root, amd64/arm64-capable single-container build with one named volume.
+
+The projects form one modular monolith and one application.
+
+No separate worker service, process, or container. Durable background jobs run through ASP.NET Core hosted services inside the application process.
 
 Do not implement provider connectors.
 
@@ -181,6 +198,8 @@ multi-provider failure exercise.
 
 Deliver:
 
+- **TemperedOps Creator Toolkit** release identity and `creator-toolkit`
+  executable identity without hard-coded registry or organization coordinates;
 - reproducible linux/amd64 and linux/arm64 images from one revision;
 - versioning, changelog, release notes, checksums/provenance where feasible, and
   source-code offer/link behavior required by AGPL;
@@ -196,6 +215,45 @@ Exit when a new user can follow only public documentation to install, claim,
 configure, publish, diagnose, back up, and upgrade on both supported
 architectures.
 
+## Post-v1 roadmap
+
+Post-v1 work does not expand or alter the ten Committed version 1 milestones.
+No release dates are assigned.
+
+### Planned
+
+Likely post-v1 modules and capabilities:
+
+- stream alerts;
+- authenticated OBS browser-source overlays for alerts, overlays, goals,
+  labels, timers, and media presentation;
+- a shared asset library;
+- Generalized trigger-condition-action workflow implementation using the
+  creator-event/action seam established in ADR 0005.
+
+The seam is established in the current architecture documentation. A
+generalized workflow engine is not part of version 1. See
+[ADR 0005](DECISIONS/0005-creator-event-action-seam.md).
+
+### Exploratory
+
+Research-only possibilities:
+
+- local soundboard playback;
+- global hotkeys;
+- an optional, separately installed and explicitly paired local creator agent;
+- OBS WebSocket control;
+- Stream Deck integrations;
+- chat bot and moderation utilities;
+- donation and commerce integrations;
+- desktop application integration.
+
+The local creator agent would support only features needing access to the
+creator's computer, such as selected-device audio playback, global hotkeys,
+local file access, OBS WebSocket communication, desktop integration, and local
+device discovery. It is not a version 1 component or a default server
+requirement.
+
 ## Deferred and prohibited work
 
 - Reddit remains deferred or explicitly experimental until a permitted, free,
@@ -205,4 +263,6 @@ architectures.
   rate limits, or policy.
 - Multiple workspaces, SaaS tenancy, organizations, public registration, email
   invitations, billing, PostgreSQL, Redis, brokers, Kubernetes, and separate
-  workers are outside version 1.
+  services are outside version 1.
+
+No separate worker service, process, or container. Durable background jobs run through ASP.NET Core hosted services inside the application process.

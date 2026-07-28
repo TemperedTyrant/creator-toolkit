@@ -5,10 +5,10 @@
 
 ## Context
 
-The primary operator is a content creator who may have limited infrastructure
-experience. The normal installation should be close to `docker compose up -d`
-and should work on a laptop or small server without Kubernetes or a public
-domain.
+The primary TemperedOps Creator Toolkit operator is a content creator who may
+have limited infrastructure experience. The normal installation should be close
+to `docker compose up -d` and should work on a laptop or small server without
+Kubernetes or a public domain.
 
 The application still needs a web server and durable background work, but the
 modular-monolith design allows both to run safely in one process.
@@ -29,8 +29,10 @@ volume.
   proxy configuration.
 - Support direct localhost and reverse-proxy deployment.
 
-Do not require a separate worker, database, Redis, queue, scheduler, or
-Kubernetes deployment in version 1.
+Do not require a separate database, Redis, queue, scheduler, or Kubernetes
+deployment in version 1.
+
+No separate worker service, process, or container. Durable background jobs run through ASP.NET Core hosted services inside the application process.
 
 ## Consequences
 

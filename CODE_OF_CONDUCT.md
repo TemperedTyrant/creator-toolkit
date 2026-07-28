@@ -51,6 +51,9 @@ moderation decisions when appropriate.
 This Code of Conduct applies within all community spaces and when an individual
 officially represents the community in public spaces.
 
+It applies to participation in the TemperedOps Creator Toolkit project and its
+community spaces.
+
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be

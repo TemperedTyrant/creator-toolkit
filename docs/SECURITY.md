@@ -1,14 +1,14 @@
-# Security design
+# TemperedOps Creator Toolkit security design
 
 ## Scope
 
 This document defines the intended version 1 security boundary. It supplements
 the public vulnerability-reporting policy in the repository root.
 
-SocialCreator protects one creator workspace from unauthenticated visitors and
-from local users exceeding their assigned role. It protects stored connector
-credentials from routine database inspection and prevents them from appearing
-in supported interfaces, logs, diagnostics, or exports.
+TemperedOps Creator Toolkit protects one creator workspace from unauthenticated
+visitors and from local users exceeding their assigned role. It protects stored
+connector credentials from routine database inspection and prevents them from
+appearing in supported interfaces, logs, diagnostics, or exports.
 
 An operator with unrestricted access to the container host or persistent volume
 is trusted. Such an operator can modify the application or database and can
@@ -189,7 +189,7 @@ diagnostic reference and safe display label, never its full URL.
 
 ## Incoming webhook security
 
-The generic incoming trigger uses a SocialCreator-defined signed protocol:
+The generic incoming trigger uses a project-defined signed protocol:
 
 - a per-source random secret;
 - HMAC over a versioned canonical request representation;
@@ -205,6 +205,12 @@ returns a generic response and does not create jobs.
 
 Provider callbacks must follow their official signature and replay guidance.
 Browser automation is not an alternative.
+
+Branding changes do not alter this protocol's security requirements. Any
+versioned protocol label or header identifier introduced during implementation
+must use the `creator-toolkit` machine-readable identity without weakening HMAC
+authentication, timestamp validation, replay protection, body limits,
+per-source secrets, or idempotency.
 
 ## Idempotency and outbound safety
 
@@ -245,6 +251,26 @@ operations.
 Records contain actor, action, target category/reference, outcome, timestamp,
 and diagnostic reference. They exclude raw capabilities, secrets, webhook URLs,
 request bodies, and sensitive provider data.
+
+## Future action and local-capability safety
+
+The creator-event/action seam does not weaken version 1 authorization,
+idempotency, audit, redaction, or diagnostic requirements. Every future action
+execution needs independent authorization, execution state, an execution or
+idempotency key, duplicate-suppression semantics where possible, failure
+classification, an action-specific retry policy, audit behavior, and diagnostic
+references.
+
+Retry policy must distinguish automatically retryable, non-retryable, retryable
+only when non-execution is known, and manual-retry-only actions. Sound playback,
+OBS scene changes, alerts, recording controls, and other local side effects
+must not be retried automatically unless the implementation establishes that
+doing so is safe. Ambiguous completion must not cause duplicate side effects.
+
+Planned authenticated OBS browser-source pages remain protected web
+application surfaces. The Exploratory local creator agent would require
+explicit pairing and a separate threat model before implementation. It is not
+part of version 1 and is not trusted or required by the default deployment.
 
 ## Backups, updates, and dependencies
 

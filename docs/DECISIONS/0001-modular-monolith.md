@@ -5,11 +5,11 @@
 
 ## Context
 
-SocialCreator needs a web interface, local identity and authorization, trigger
-normalization, durable announcement publishing, scheduling, provider
-connections, health checks, and diagnostics. These concerns need clear
-boundaries, but version 1 is intended for a nontechnical creator to install and
-operate on one machine.
+TemperedOps Creator Toolkit needs a web interface, local identity and
+authorization, trigger normalization, durable announcement publishing,
+scheduling, provider connections, health checks, and diagnostics. These
+concerns need clear boundaries, but version 1 is intended for a nontechnical
+creator to install and operate on one machine.
 
 Splitting these concerns into independently deployed services would require
 network contracts, distributed tracing, deployment coordination, and additional
@@ -22,12 +22,15 @@ connector additions harder.
 
 ## Decision
 
-Build SocialCreator as a modular monolith targeting .NET 10 LTS with:
+Build TemperedOps Creator Toolkit as a modular monolith targeting .NET 10 LTS
+with:
 
 - ASP.NET Core Razor Pages for the server-rendered interface;
 - ASP.NET Core Identity for local authentication and roles;
 - Entity Framework Core and one SQLite database;
 - ASP.NET Core hosted background services for durable-job execution;
+- Web, Core, and Infrastructure .NET projects that form one application and
+  preserve explicit logical boundaries;
 - logical modules with explicit application contracts;
 - provider adapters that depend on provider-neutral connector and source
   interfaces.
@@ -35,6 +38,10 @@ Build SocialCreator as a modular monolith targeting .NET 10 LTS with:
 Modules may share one process and database transaction where useful, but each
 module owns its behavior and persistence concepts. Core domain/application code
 must not depend on Discord, Bluesky, Twitch, YouTube, or their DTOs.
+
+Multiple projects do not create multiple deployable services.
+
+No separate worker service, process, or container. Durable background jobs run through ASP.NET Core hosted services inside the application process.
 
 Server-side authorization policies apply at page and application-service
 boundaries. Publishing work is separated into independent per-destination
@@ -78,4 +85,3 @@ one process, a provider workload needs independent isolation, or a supported
 deployment model requires horizontal scale. Feature count alone is not enough.
 
 SPDX-License-Identifier: AGPL-3.0-only
-

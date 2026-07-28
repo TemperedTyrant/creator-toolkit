@@ -1,9 +1,9 @@
 # Architecture decision records
 
 Architecture decision records (ADRs) capture decisions that materially constrain
-SocialCreator's structure, operation, security, licensing, or compatibility.
-They explain why a decision was made so later contributors can change it
-deliberately rather than accidentally.
+TemperedOps Creator Toolkit's structure, operation, security, licensing, or
+compatibility. They explain why a decision was made so later contributors can
+change it deliberately rather than accidentally.
 
 ## Status values
 
@@ -43,6 +43,6 @@ supersedes the old one and update this index.
 | [0002](0002-sqlite-as-default-database.md) | Accepted | Use SQLite as the version 1 default database |
 | [0003](0003-single-container-deployment.md) | Accepted | Ship one application container and one named volume |
 | [0004](0004-agpl-3.0-only-license.md) | Accepted | License the project under AGPL-3.0-only |
+| [0005](0005-creator-event-action-seam.md) | Accepted | Establish a reusable creator-event/action seam without a premature generic workflow engine |
 
 SPDX-License-Identifier: AGPL-3.0-only
-
