@@ -21,4 +21,45 @@ public sealed class AuditRecord
     public string? ReasonCode { get; private set; }
 
     public string? DiagnosticReference { get; private set; }
+
+    public static AuditRecord Create(
+        AuditEvent auditEvent,
+        DateTimeOffset occurredAtUtc)
+    {
+        ArgumentNullException.ThrowIfNull(auditEvent);
+
+        return new AuditRecord
+        {
+            Id = Guid.NewGuid(),
+            OccurredAtUtc = occurredAtUtc,
+            EventCode = auditEvent.EventCode switch
+            {
+                AuditEventCode.ProtectedOperation => "security.protected-operation",
+                _ => throw new ArgumentOutOfRangeException(
+                    nameof(auditEvent),
+                    "The audit event code is not supported."),
+            },
+            ActorUserId = auditEvent.ActorUserId,
+            TargetUserId = auditEvent.TargetUserId,
+            Outcome = auditEvent.Outcome switch
+            {
+                AuditOutcome.Succeeded => "succeeded",
+                AuditOutcome.Rejected => "rejected",
+                AuditOutcome.Failed => "failed",
+                _ => throw new ArgumentOutOfRangeException(
+                    nameof(auditEvent),
+                    "The audit outcome is not supported."),
+            },
+            ReasonCode = auditEvent.ReasonCode switch
+            {
+                null => null,
+                AuditReasonCode.Conflict => "conflict",
+                AuditReasonCode.UnexpectedFailure => "unexpected-failure",
+                _ => throw new ArgumentOutOfRangeException(
+                    nameof(auditEvent),
+                    "The audit reason code is not supported."),
+            },
+            DiagnosticReference = auditEvent.DiagnosticReference?.Value,
+        };
+    }
 }

@@ -21,4 +21,42 @@ public sealed class DiagnosticRecord
     public string Operation { get; private set; } = string.Empty;
 
     public string? ExceptionType { get; private set; }
+
+    public static DiagnosticRecord Create(
+        DiagnosticReference reference,
+        UnexpectedDiagnosticEvent diagnosticEvent,
+        DateTimeOffset occurredAtUtc)
+    {
+        ArgumentNullException.ThrowIfNull(diagnosticEvent);
+
+        (string category, string errorCode) = diagnosticEvent.FailureKind switch
+        {
+            DiagnosticFailureKind.UnhandledRequest => ("internal", "unhandled-request"),
+            DiagnosticFailureKind.Infrastructure => ("infrastructure", "infrastructure-failure"),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(diagnosticEvent),
+                "The diagnostic failure kind is not supported."),
+        };
+
+        string operation = diagnosticEvent.Operation switch
+        {
+            DiagnosticOperation.HttpRequest => "http-request",
+            DiagnosticOperation.PersistenceInitialization => "persistence-initialization",
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(diagnosticEvent),
+                "The diagnostic operation is not supported."),
+        };
+
+        return new DiagnosticRecord
+        {
+            Id = Guid.NewGuid(),
+            Reference = reference.Value,
+            OccurredAtUtc = occurredAtUtc,
+            Severity = "error",
+            Category = category,
+            ErrorCode = errorCode,
+            Operation = operation,
+            ExceptionType = diagnosticEvent.ExceptionTypeCode,
+        };
+    }
 }

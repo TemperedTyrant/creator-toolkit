@@ -2,8 +2,13 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using TemperedTyrant.CreatorToolkit.Core.Audit;
+using TemperedTyrant.CreatorToolkit.Core.Diagnostics;
 using TemperedTyrant.CreatorToolkit.Core.Security;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Audit;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Diagnostics;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
 using TemperedTyrant.CreatorToolkit.Infrastructure.ProcessCoordination;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Security;
@@ -30,19 +35,24 @@ public static class InfrastructureServiceCollectionExtensions
         }.ToString();
 
         services.AddSingleton(layoutProvider);
-        services.AddSingleton(TimeProvider.System);
+        services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton(connectionInterceptor);
-        // These framework categories can render configured repository or data-source paths.
-        // PersistenceInitializer emits the path-safe startup failure event instead.
-        services.AddLogging(
-            logging =>
+        services.AddLogging();
+        services.Configure<LoggerFilterOptions>(
+            options =>
             {
-                logging.AddFilter(
-                    "Microsoft.AspNetCore.DataProtection",
-                    LogLevel.None);
-                logging.AddFilter(
-                    "Microsoft.EntityFrameworkCore.Database.Connection",
-                    LogLevel.None);
+                options.Rules.Clear();
+                options.MinLevel = LogLevel.Trace;
+                options.Rules.Add(
+                    new LoggerFilterRule(
+                        providerName: null,
+                        categoryName: null,
+                        logLevel: LogLevel.Trace,
+                        filter: (_, category, level) =>
+                            category?.StartsWith(
+                                "TemperedTyrant.CreatorToolkit.",
+                                StringComparison.Ordinal) == true
+                            && level >= LogLevel.Information));
             });
         services.AddDbContextFactory<CreatorToolkitDbContext>(
             options => options
@@ -57,6 +67,12 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<SecurityOperationCoordinator>();
         services.AddSingleton<MigrationCoordinator>();
         services.AddSingleton<PersistenceInitializer>();
+        services.AddScoped<IAuditWriter, TransactionalAuditWriter>();
+        services.AddSingleton<
+            IDiagnosticReferenceGenerator,
+            CryptographicDiagnosticReferenceGenerator>();
+        services.AddScoped<DiagnosticPersistence>();
+        services.AddSingleton<IDiagnosticRecorder, BestEffortDiagnosticRecorder>();
         services.AddScoped<ISecretStore, DataProtectionSecretStore>();
 
         return services;

@@ -130,6 +130,29 @@ external key-encryption option would require a separate design.
 Use structured console logging and generate a random diagnostic reference for
 technical failures. Redact before a value reaches the logger.
 
+Persisted diagnostics are restricted to a fixed allowlist of failure category,
+error code, operation, severity, timestamp, and opaque diagnostic reference.
+They do not accept arbitrary detail fields or property bags. Only unexpected
+internal and infrastructure failures create records. Validation,
+authentication, access-denied, not-found, rate-limit, and expected conflict
+responses do not.
+
+Diagnostic references use the opaque `CTK-` reference format and do not encode
+time, request correlation, actor, entity, or error information. Request
+correlation identifiers are separate. Diagnostic persistence is best-effort,
+uses a service scope separate from the failed operation, and cannot replace the
+original safe response. Records are retained for no more than 30 days and the
+store is capped at 1,000 rows. Identical classifications occurring within a
+short bounded window reuse the existing diagnostic record only when the fixed
+category, operation, error code, and sanitized exception type form a specific
+infrastructure-failure key. Generic unhandled HTTP failures are not
+deduplicated because those fixed fields are too broad to prove equivalence.
+
+Normal diagnostic references contain 128 cryptographically random bits and
+encode no time, actor, entity, category, or error details. A database uniqueness
+collision receives a bounded fresh-reference retry and never causes an
+unrelated existing diagnostic to be returned.
+
 Never log:
 
 - passwords or password-equivalent values;
@@ -144,6 +167,12 @@ Never log:
 
 HTTP client logging must not automatically capture headers or bodies. Exception
 logging must avoid attaching raw provider requests or response content.
+Framework logging categories are denied by default. Only application-owned
+categories containing fixed, sanitized operational events are enabled. An
+unexpected-failure event may include its opaque diagnostic reference and a
+fixed allowlisted exception-type classification, but never the exception
+object, message, stack trace, path, connection string, request target, or
+submitted value.
 
 ## Normal errors, Debug, and exports
 
@@ -151,6 +180,12 @@ Normal pages show a safe status, short explanation, recommended action, and
 diagnostic reference. Stack traces, HTTP status/body detail, internal record
 identifiers, job leases, attempt internals, and worker state belong only on the
 Owner/Admin Debug page or in structured logs.
+
+Expected HTTP 4xx outcomes use fixed responses and do not create persisted
+diagnostics. Unexpected request and infrastructure failures return an opaque
+diagnostic reference. Failure while recording that diagnostic is logged only
+as a fixed safe event containing the opaque reference; it does not recursively
+create a diagnostic.
 
 Debug data and diagnostic exports use explicit field allowlists. Export replaces
 internal record identifiers with diagnostic references where practical and
@@ -238,10 +273,23 @@ idempotency mechanism, connectors use it in addition to local guards.
 - Media support must check type, size, provider compatibility, and remote
   reachability without weakening SSRF policy.
 
+The baseline page header profile restricts content, objects, base URLs, framing,
+forms, referrers, MIME sniffing, camera, microphone, and geolocation. Sensitive
+endpoints can select a stricter profile and `no-store`; caching is not disabled
+globally for all pages and static assets. Inline scripts and styles are not part
+of the foundation. HSTS and HTTPS redirection remain disabled until validated
+public-URL and trusted-proxy configuration can establish effective HTTPS.
+
 ## Audit trail
 
 Audit records are append-only through supported application operations. They are
 not tamper-evident against an operator with direct database or volume access.
+
+The audit writer only stages the required record in the caller's scoped
+database context. It does not save, commit, or create a nested transaction.
+The protected operation owns the surrounding transaction, so its state change
+and audit record commit or roll back together. Audit and diagnostic timestamps
+come from the injected application time provider.
 
 Audit authentication security events, user/role changes, ownership and recovery,
 setup-link lifecycle, integration credential replacement, source/destination
