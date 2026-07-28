@@ -1,0 +1,12 @@
+.idea/
+.vscode/
+.vs/
+bin/
+obj/
+TestResults/
+coverage/
+.env
+*.db
+*.db-shm
+*.db-wal
+data/
