@@ -1,0 +1,22 @@
+@page
+@model SettingsModel
+@{
+    ViewData["Title"] = "Settings";
+}
+<header class="page-heading">
+    <h1>Settings</h1>
+    <p class="lede">Implemented, non-secret installation configuration.</p>
+</header>
+
+<section class="card">
+    <h2>Deployment configuration</h2>
+    <dl class="status-list">
+        <dt>Public URL configured</dt>
+        <dd>@(Model.PublicUrlConfigured ? "Yes" : "No")</dd>
+        <dt>Trusted proxy entries</dt>
+        <dd>@Model.TrustedProxyCount</dd>
+        <dt>Trusted network entries</dt>
+        <dd>@Model.TrustedNetworkCount</dd>
+    </dl>
+    <p class="muted">Addresses, paths, environment values, connection details, and key material are intentionally not shown.</p>
+</section>

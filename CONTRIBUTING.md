@@ -16,9 +16,8 @@ By participating, you agree to follow the
 4. For a substantial feature or architecture change, open a design discussion
    before implementation.
 
-The current repository phase is documentation and planning. Do not add
-application source code until maintainers explicitly begin an implementation
-milestone.
+The repository is in checkpoint-gated milestone 1 implementation. Add
+application source code only within the currently approved checkpoint.
 
 ## Development principles
 
@@ -38,9 +37,9 @@ milestone.
   creator-toolkit modules do not belong in the ten version 1 milestones.
 - Never bypass a provider's supported API, authentication, price, or policy.
 
-## Future local workflow
+## Local workflow
 
-Once milestone 1 creates the solution, the baseline commands will be:
+The baseline .NET commands are:
 
 ```sh
 dotnet restore
@@ -51,8 +50,31 @@ docker compose config --quiet
 ```
 
 Additional integration or multi-architecture checks may be required by the
-affected area. Until those files exist, documentation changes should validate
-Markdown structure, relative links, terminology, and portability.
+affected area. The Compose command does not apply until container files exist.
+
+The Setup capability-leakage test uses the pinned Playwright test package and a
+real headless Chromium process. After the first build, install that matching
+browser runtime once before `dotnet test`:
+
+```sh
+pwsh tests/TemperedTyrant.CreatorToolkit.IntegrationTests/bin/Debug/net10.0/playwright.ps1 install chromium
+```
+
+This browser is test tooling only and is not an application runtime dependency.
+
+Some operating-system distributions package .NET reference packs without
+optional NuGet package-pruning metadata. `Directory.Build.props` enables
+`AllowMissingPrunePackageData` solely as a build-environment compatibility
+workaround for those SDK packages. It is not an application setting, does not
+change runtime behavior, and must not be used to suppress dependency
+vulnerability auditing.
+
+`SQLitePCLRaw.lib.e_sqlite3` is also a deliberate direct dependency. EF Core's
+SQLite package selects the managed bundle and provider transitively, while the
+embedded native SQLite asset is pinned separately so its security-sensitive
+version remains explicit and independently auditable. Do not remove or change
+that pin without inspecting the complete transitive graph and rerunning both
+the vulnerable-package and deprecated-package checks.
 
 ## Tests and documentation
 

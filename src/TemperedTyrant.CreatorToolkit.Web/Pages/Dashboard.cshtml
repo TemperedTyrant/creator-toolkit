@@ -1,0 +1,50 @@
+@page
+@model DashboardModel
+@using TemperedTyrant.CreatorToolkit.Infrastructure.Identity
+@{
+    ViewData["Title"] = "Dashboard";
+}
+<header class="page-heading">
+    <h1>Dashboard</h1>
+    <p class="lede">A factual view of this Creator Toolkit installation.</p>
+</header>
+
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    <p class="notice" role="status">@Model.StatusMessage</p>
+}
+
+<div class="card-grid">
+    <section class="card" aria-labelledby="account-heading">
+        <h2 id="account-heading">Signed-in account</h2>
+        <dl class="status-list">
+            <dt>Username</dt>
+            <dd>@Model.State.UserName</dd>
+            <dt>Role</dt>
+            <dd>@Model.State.Role</dd>
+            <dt>Installation initialized</dt>
+            <dd>@(Model.State.InstallationInitialized ? "Yes" : "No")</dd>
+        </dl>
+        <div class="actions">
+            <a class="button secondary" asp-page="/ChangePassword">Change password</a>
+            @if (User.IsInRole(SystemRoles.Owner) || User.IsInRole(SystemRoles.Admin))
+            {
+                <a class="button secondary" asp-page="/Users">Manage users</a>
+            }
+        </div>
+    </section>
+    <section class="card" aria-labelledby="product-heading">
+        <h2 id="product-heading">Creator Announcements</h2>
+        <dl class="status-list">
+            <dt>Announcements</dt>
+            <dd>Not implemented</dd>
+            <dt>Destinations</dt>
+            <dd>Not implemented</dd>
+            <dt>Event sources</dt>
+            <dd>Not implemented</dd>
+            <dt>Publish history</dt>
+            <dd>Not implemented</dd>
+        </dl>
+        <p class="muted">These product areas are intentionally empty in this pre-alpha foundation.</p>
+    </section>
+</div>

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <AssemblyName>creator-toolkit</AssemblyName>
+    <RootNamespace>TemperedTyrant.CreatorToolkit.Web</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../TemperedTyrant.CreatorToolkit.Core/TemperedTyrant.CreatorToolkit.Core.csproj" />
+    <ProjectReference Include="../TemperedTyrant.CreatorToolkit.Infrastructure/TemperedTyrant.CreatorToolkit.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>

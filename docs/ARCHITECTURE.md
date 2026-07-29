@@ -106,6 +106,14 @@ Ownership transfer is a single transaction that preserves the one-Owner
 invariant. The current sole Owner cannot otherwise be disabled, deleted, or
 demoted.
 
+User-lifecycle application services enforce the role matrix independently of
+the Razor handlers. Owner can manage Admin, Editor, and Viewer accounts; Admin
+can manage Editor and Viewer accounts only. Pending activation, role changes,
+disablement, deletion, ownership transfer, and Owner recovery use the existing
+scoped Identity stores inside explicit SQLite transactions with required audit
+records. The short cross-process security-operation lock serializes competing
+capability and ownership operations without taking the web-host singleton lock.
+
 Opaque bootstrap, account-setup, and Owner-recovery credentials are capability
 tokens, not login sessions. Their random values contain no embedded claims. Only
 a cryptographic hash, purpose, subject where applicable, creation time, expiry,
@@ -271,6 +279,24 @@ Hosted services stop claiming new work during graceful shutdown, honor
 cancellation, and leave or release leases so unfinished work can recover after
 restart.
 
+## In-process lifecycle foundation
+
+The current application host has one framework `IHostedService` that coordinates
+only fixed in-memory lifecycle states: Starting, Running, Stopping, Stopped, and
+Failed. It starts after configuration validation, the long-running application
+host lock, migrations and database initialization, and Data Protection key-ring
+validation. Startup failure fails the host closed.
+
+Shutdown observes the host stopping signal and an internal ten-second bound;
+the host-level shutdown timeout is fifteen seconds so the internal bound can
+finish first. The coordinator stops reporting that it accepts lifecycle work
+before shutdown completion begins. A timeout, cancellation, or shutdown failure
+leaves the in-memory state Failed rather than Running. Late completion cannot
+leave that terminal failure state or re-enable work, and late task faults are
+observed. The state is not persisted and does not implement jobs, scheduling,
+polling, retries, leases, or provider work. Health and readiness endpoints
+remain deferred.
+
 ## Announcement and approval state
 
 Expected states include Draft, PendingApproval, Approved, Scheduled, Queued,
@@ -332,10 +358,13 @@ Normal pages receive only:
 - random diagnostic reference ID.
 
 Structured console logs contain technical context keyed by the same reference.
-An Owner/Admin-only Debug page exposes allowlisted technical fields such as
-application version, migration state, job counts, sanitized attempt categories,
-connection check timing, and configuration presence. Sanitized export uses the
-same or a stricter allowlist.
+The Owner/Admin-only Debug page currently exposes a dedicated allowlisted read
+model containing application version, initialization and migration state,
+database and key-ring accessibility booleans, configuration-presence counts,
+and recent fixed diagnostic references, codes, and timestamps. It does not
+expose raw entities, configuration, logs, exceptions, paths, SQL, or request
+data. Job and provider fields remain absent until their separately reviewed
+implementations exist.
 
 Secrets, authorization data, webhook URLs, internal payloads, and encryption
 keys never enter user errors, diagnostics, exports, or logs.

@@ -47,6 +47,19 @@ The bootstrap credential:
 - is consumed atomically with Owner and workspace creation;
 - is permanently unavailable after successful initialization.
 
+`creator-toolkit bootstrap-owner` uses the short security-operation lock and
+can run while the web host holds its singleton lock. It generates 32 random
+bytes, base64url-encodes them, stores only the SHA-256 hash, and emits the raw
+value only to direct command output. When `CREATOR_TOOLKIT_PUBLICURL` is set,
+the output URL carries the value in `/Setup#token=...`; otherwise the route and
+value are printed separately. The Setup page's same-origin external script
+removes the fragment with `history.replaceState` before retaining it in the
+manual token form control. The value is submitted only in a POST body and is
+not stored in browser storage, a query, a path, rendered markup, logging,
+diagnostics, or audit data. Setup responses use `no-store` and `no-referrer`.
+Setup accepts only the canonical 43-character unpadded base64url encoding of
+exactly 32 bytes.
+
 The setup handler returns an unavailable/not-found response after initialization
 and must not reveal whether a guessed token was close or previously valid.
 
@@ -57,22 +70,47 @@ recovery token primitives, security stamps, lockout behavior, roles, and secure
 cookie integration. Do not build custom password hashing, login cookies, bearer
 tokens, or authentication token formats.
 
+Local accounts require a username and login accepts that username only. Email
+is optional and is not a login or verification requirement. Passwords contain
+15 through 128 Unicode scalar values. They are NFC-normalized consistently
+before counting, common-password validation, framework hashing, and framework
+verification, but are never trimmed, truncated, case-folded, or subjected to
+composition rules. The Identity password hasher remains the standard framework
+hasher behind a normalization-only delegating wrapper, preserving its hash
+format and rehash behavior.
+
+The common-password check compares only a complete candidate,
+case-insensitively. It also treats complete project, username, and display-name
+context values as disallowed passwords; it does not use substring matching or
+strength scoring. The embedded SecLists snapshot is identified, checksummed,
+and attributed in `THIRD_PARTY_NOTICES.md`. It is a common-password list, not a
+claim of comprehensive breach detection.
+
 Authentication requirements include:
 
 - HTTPS-aware Secure cookies, HttpOnly, and an appropriate SameSite mode;
 - antiforgery validation on state-changing browser requests;
 - login throttling/lockout without account enumeration;
 - generic login and recovery responses;
-- regular security-stamp validation;
+- security-stamp validation on every authenticated request;
 - session invalidation after password reset, disablement, role change, or
   ownership transfer;
 - rotation of framework Data Protection keys according to supported defaults.
 
-Only the Owner creates users. A new user receives a random opaque setup
-capability that expires after 24 hours and is single-use. Only a hash is stored.
-The raw setup link is displayed once to the Owner and is never logged. Revoking
-or regenerating it invalidates the prior value. The user chooses their own
-password.
+Login and Setup use separate POST-only rate-limit partitions. The partition key
+uses the effective remote address only after forwarded headers have been
+accepted from an explicitly configured trusted proxy or network. Safe GET
+requests do not consume these mutation limits. Authentication cookies validate
+the security stamp on every authenticated request and also reject a disabled
+account even if its stamp was not changed.
+
+The Owner may create Admin, Editor, and Viewer accounts. An Admin may create
+Editor and Viewer accounts only. A new pending user receives a random opaque
+activation capability that expires after 24 hours and is single-use. Only its
+hash and fixed lifecycle metadata are stored. The raw activation link is
+displayed once to the authorized creator and is never logged or retrievable
+later. Regeneration explicitly revokes the prior value. The user chooses their
+own password during atomic activation.
 
 An operator with container access can invoke an Owner recovery command. Recovery
 must create a cryptographically random, short-lived, one-time opaque capability,
@@ -83,11 +121,38 @@ sent through normal application logging. The recovery handler uses generic
 responses for invalid, expired, used, or revoked values. Recovery must not print
 an existing password or connector credential.
 
+`creator-toolkit reset-owner` requires the operator to type `RESET OWNER`.
+Automation may use the explicit `--yes` flag. Issuance works alongside the web
+host through the short security-operation lock, invalidates the current Owner's
+security stamp immediately, and creates a 30-minute purpose-bound recovery
+capability. Completion uses ASP.NET Core Identity password-reset facilities,
+does not alter ownership, and consumes the capability in the same transaction
+as its required audit record.
+
 ## Authorization
 
 Fixed roles are Owner, Admin, Editor, and Viewer. Central named authorization
 policies represent capabilities; role checks scattered through UI markup are
 not the security model.
+
+The user-lifecycle matrix is enforced by both Razor Page authorization and
+application services:
+
+- Owner may create and manage Admin, Editor, and Viewer accounts.
+- Admin may create and manage Editor and Viewer accounts only.
+- Editor and Viewer cannot manage accounts.
+- Only the current Owner may transfer ownership.
+
+Role changes and disablement use the target's Identity concurrency stamp.
+Ownership transfer also requires the ownership revision and current-password
+verification. The transfer transaction promotes the target, updates ownership,
+demotes the former Owner to Admin, rotates both security stamps, and stages the
+required audit records before commit.
+
+Ownership-transfer reauthentication participates in the same ASP.NET Core
+Identity access-failure and lockout state as login. Failed checks are recorded
+and audited in a committed transaction, locked accounts cannot continue
+guessing, and forwarding-header changes cannot bypass the account lockout.
 
 Every protected Razor Page handler and application-service method validates its
 policy. Background jobs revalidate state relevant to publishing, including
@@ -101,6 +166,16 @@ path.
 Tests must cover both allowed and denied operations for every role, forged
 requests to hidden actions, stale cookies, disabled users, role transitions,
 and ownership transfer failure rollback.
+
+The authenticated application shell is protected by the application-access
+policy. Users, Settings, and Debug require the Owner/Admin administration
+policy; their navigation visibility mirrors but does not replace server-side
+enforcement. The Users read model exposes only username, role, account state,
+and authorized workflow links. Settings exposes configuration presence and
+trusted-entry counts, never values. Debug uses a fixed allowlist containing safe
+booleans, version, diagnostic references, fixed diagnostic codes, and UTC
+timestamps. Product-area pages are explicit non-functional empty states and
+contain no provider or publishing operations.
 
 ## Secret storage
 
@@ -130,6 +205,29 @@ external key-encryption option would require a separate design.
 Use structured console logging and generate a random diagnostic reference for
 technical failures. Redact before a value reaches the logger.
 
+Persisted diagnostics are restricted to a fixed allowlist of failure category,
+error code, operation, severity, timestamp, and opaque diagnostic reference.
+They do not accept arbitrary detail fields or property bags. Only unexpected
+internal and infrastructure failures create records. Validation,
+authentication, access-denied, not-found, rate-limit, and expected conflict
+responses do not.
+
+Diagnostic references use the opaque `CTK-` reference format and do not encode
+time, request correlation, actor, entity, or error information. Request
+correlation identifiers are separate. Diagnostic persistence is best-effort,
+uses a service scope separate from the failed operation, and cannot replace the
+original safe response. Records are retained for no more than 30 days and the
+store is capped at 1,000 rows. Identical classifications occurring within a
+short bounded window reuse the existing diagnostic record only when the fixed
+category, operation, error code, and sanitized exception type form a specific
+infrastructure-failure key. Generic unhandled HTTP failures are not
+deduplicated because those fixed fields are too broad to prove equivalence.
+
+Normal diagnostic references contain 128 cryptographically random bits and
+encode no time, actor, entity, category, or error details. A database uniqueness
+collision receives a bounded fresh-reference retry and never causes an
+unrelated existing diagnostic to be returned.
+
 Never log:
 
 - passwords or password-equivalent values;
@@ -144,6 +242,18 @@ Never log:
 
 HTTP client logging must not automatically capture headers or bodies. Exception
 logging must avoid attaching raw provider requests or response content.
+Framework logging categories are denied by default. Only application-owned
+categories containing fixed, sanitized operational events are enabled. An
+unexpected-failure event may include its opaque diagnostic reference and a
+fixed allowlisted exception-type classification, but never the exception
+object, message, stack trace, path, connection string, request target, or
+submitted value.
+
+Application lifecycle logging uses fixed parameterless messages for starting,
+running, stopping, stopped, startup failure, shutdown timeout, and shutdown
+cancellation or failure. It never attaches exception objects or accepts paths,
+configuration, connection details, or user-controlled fields. Debug exposes
+only the fixed in-memory lifecycle enum through its existing allowlist.
 
 ## Normal errors, Debug, and exports
 
@@ -151,6 +261,12 @@ Normal pages show a safe status, short explanation, recommended action, and
 diagnostic reference. Stack traces, HTTP status/body detail, internal record
 identifiers, job leases, attempt internals, and worker state belong only on the
 Owner/Admin Debug page or in structured logs.
+
+Expected HTTP 4xx outcomes use fixed responses and do not create persisted
+diagnostics. Unexpected request and infrastructure failures return an opaque
+diagnostic reference. Failure while recording that diagnostic is logged only
+as a fixed safe event containing the opaque reference; it does not recursively
+create a diagnostic.
 
 Debug data and diagnostic exports use explicit field allowlists. Export replaces
 internal record identifiers with diagnostic references where practical and
@@ -238,10 +354,23 @@ idempotency mechanism, connectors use it in addition to local guards.
 - Media support must check type, size, provider compatibility, and remote
   reachability without weakening SSRF policy.
 
+The baseline page header profile restricts content, objects, base URLs, framing,
+forms, referrers, MIME sniffing, camera, microphone, and geolocation. Sensitive
+endpoints can select a stricter profile and `no-store`; caching is not disabled
+globally for all pages and static assets. Inline scripts and styles are not part
+of the foundation. HSTS and HTTPS redirection remain disabled until validated
+public-URL and trusted-proxy configuration can establish effective HTTPS.
+
 ## Audit trail
 
 Audit records are append-only through supported application operations. They are
 not tamper-evident against an operator with direct database or volume access.
+
+The audit writer only stages the required record in the caller's scoped
+database context. It does not save, commit, or create a nested transaction.
+The protected operation owns the surrounding transaction, so its state change
+and audit record commit or roll back together. Audit and diagnostic timestamps
+come from the injected application time provider.
 
 Audit authentication security events, user/role changes, ownership and recovery,
 setup-link lifecycle, integration credential replacement, source/destination

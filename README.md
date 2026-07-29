@@ -10,8 +10,8 @@ machine-readable identifier remains `creator-toolkit`.
 
 > [!WARNING]
 > TemperedTyrant Creator Toolkit is in pre-alpha development.
-> The repository currently contains product and architecture documentation;
-> no usable application release is available yet.
+> Milestone 1 application-foundation work has begun, but no usable application
+> release is available yet.
 
 Creator Announcements is the first module that will be implemented and
 released. Version 1 remains deliberately focused on reliable creator
@@ -111,6 +111,7 @@ Do not report vulnerabilities in public issues. Follow
 Copyright notices for individual contributions remain with their contributors.
 Original TemperedTyrant Creator Toolkit project material is licensed under the GNU
 Affero General Public License version 3 only. Incorporated third-party material
-retains its identified license and attribution. See [LICENSE](LICENSE).
+retains its identified license and attribution. See [LICENSE](LICENSE) and
+[third-party notices](THIRD_PARTY_NOTICES.md).
 
 SPDX-License-Identifier: AGPL-3.0-only

@@ -1,0 +1,33 @@
+@page
+@model LoginModel
+@{
+    Layout = null;
+}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign in</title>
+</head>
+<body>
+    <main>
+        <h1>Sign in</h1>
+        <div asp-validation-summary="ModelOnly"></div>
+        <form method="post">
+            <input asp-for="ReturnUrl" type="hidden">
+            <div>
+                <label asp-for="UserName"></label>
+                <input asp-for="UserName" autocomplete="username">
+                <span asp-validation-for="UserName"></span>
+            </div>
+            <div>
+                <label asp-for="Password"></label>
+                <input asp-for="Password" type="password" autocomplete="current-password">
+                <span asp-validation-for="Password"></span>
+            </div>
+            <button type="submit">Sign in</button>
+        </form>
+    </main>
+</body>
+</html>

@@ -1,6 +1,9 @@
 .idea/
 .vscode/
 .vs/
+.dotnet-home/
+.local/
+artifacts/
 bin/
 obj/
 TestResults/
@@ -16,3 +19,5 @@ data/
 *.bak
 *.backup
 secrets/
+playwright-report/
+test-results/

@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TemperedTyrant.CreatorToolkit.Core/TemperedTyrant.CreatorToolkit.Core.csproj" />
+    <Project Path="src/TemperedTyrant.CreatorToolkit.Infrastructure/TemperedTyrant.CreatorToolkit.Infrastructure.csproj" />
+    <Project Path="src/TemperedTyrant.CreatorToolkit.Web/TemperedTyrant.CreatorToolkit.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TemperedTyrant.CreatorToolkit.IntegrationTests/TemperedTyrant.CreatorToolkit.IntegrationTests.csproj" />
+    <Project Path="tests/TemperedTyrant.CreatorToolkit.UnitTests/TemperedTyrant.CreatorToolkit.UnitTests.csproj" />
+  </Folder>
+</Solution>

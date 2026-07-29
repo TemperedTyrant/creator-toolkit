@@ -1,0 +1,31 @@
+@page
+@model TemperedTyrant.CreatorToolkit.Web.Pages.Account.TransferOwnershipModel
+@{
+    ViewData["Title"] = "Transfer ownership";
+}
+<header class="page-heading">
+    <h1>Transfer ownership</h1>
+    <p class="lede">The selected account becomes Owner and your account becomes Admin.</p>
+</header>
+<div asp-validation-summary="ModelOnly"></div>
+<form method="post">
+    <input asp-for="ExpectedOwnershipRevision" type="hidden">
+    <div>
+        <label asp-for="TargetUserId">New Owner</label>
+        <select asp-for="TargetUserId">
+            @foreach (var target in Model.Targets)
+            {
+                <option value="@target.UserId">@target.DisplayName (@target.UserName)</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label asp-for="CurrentPassword">Current password</label>
+        <input asp-for="CurrentPassword" type="password" autocomplete="current-password">
+        <span asp-validation-for="CurrentPassword"></span>
+    </div>
+    <div class="actions">
+        <button type="submit">Transfer ownership</button>
+        <a class="button secondary" asp-page="/Users">Cancel</a>
+    </div>
+</form>

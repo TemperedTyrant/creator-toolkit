@@ -1,0 +1,49 @@
+@page
+@model SetupModel
+@{
+    Layout = null;
+}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Set up Creator Toolkit</title>
+    <script src="/js/setup.js" defer></script>
+</head>
+<body>
+    <main>
+        <h1>Set up Creator Toolkit</h1>
+        <p>Create the first local Owner account.</p>
+        <div asp-validation-summary="ModelOnly"></div>
+        <form method="post" id="setup-form" autocomplete="off">
+            <div>
+                <label asp-for="Capability"></label>
+                <input asp-for="Capability" type="password" autocomplete="off">
+                <span asp-validation-for="Capability"></span>
+            </div>
+            <div>
+                <label asp-for="UserName"></label>
+                <input asp-for="UserName" autocomplete="username">
+                <span asp-validation-for="UserName"></span>
+            </div>
+            <div>
+                <label asp-for="DisplayName"></label>
+                <input asp-for="DisplayName" autocomplete="name">
+                <span asp-validation-for="DisplayName"></span>
+            </div>
+            <div>
+                <label asp-for="Password"></label>
+                <input asp-for="Password" type="password" autocomplete="new-password">
+                <span asp-validation-for="Password"></span>
+            </div>
+            <div>
+                <label asp-for="ConfirmPassword"></label>
+                <input asp-for="ConfirmPassword" type="password" autocomplete="new-password">
+                <span asp-validation-for="ConfirmPassword"></span>
+            </div>
+            <button type="submit">Create Owner</button>
+        </form>
+    </main>
+</body>
+</html>

@@ -1,0 +1,52 @@
+@page
+@model UsersModel
+@using TemperedTyrant.CreatorToolkit.Infrastructure.Identity
+@{
+    ViewData["Title"] = "Users";
+}
+<header class="page-heading">
+    <h1>Users</h1>
+    <p class="lede">Local accounts and their current application roles.</p>
+</header>
+
+<div class="actions">
+    <a class="button" asp-page="/Account/CreateUser">Create pending user</a>
+    @if (Model.Directory.CanTransferOwnership)
+    {
+        <a class="button secondary" asp-page="/Account/TransferOwnership">Transfer ownership</a>
+    }
+</div>
+
+<div class="table-wrap">
+    <table>
+        <caption class="muted">Accounts visible to the current administrator</caption>
+        <thead>
+            <tr>
+                <th scope="col">Username</th>
+                <th scope="col">Role</th>
+                <th scope="col">State</th>
+                <th scope="col">Allowed action</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (UserDirectoryEntry account in Model.Directory.Users)
+        {
+            <tr>
+                <td>@account.UserName</td>
+                <td>@account.Role</td>
+                <td>@account.State.ToString()</td>
+                <td>
+                    @if (account.CanManage)
+                    {
+                        <a asp-page="/Account/ManageUser" asp-route-userId="@account.UserId">Manage account</a>
+                    }
+                    else
+                    {
+                        <span class="muted">No management actions</span>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>

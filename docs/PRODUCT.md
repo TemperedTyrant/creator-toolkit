@@ -2,8 +2,10 @@
 
 ## Status
 
-TemperedTyrant Creator Toolkit is still in the documentation and architecture
-phase; none of the described application behavior is implemented yet.
+TemperedTyrant Creator Toolkit is in pre-alpha application-foundation
+development. Local Identity, account lifecycle, the authenticated application
+shell, and sanitized diagnostics are implemented. Announcement, provider,
+publishing, scheduling, and durable-job behavior remains unimplemented.
 
 **Self-hosted tools and automation for creators and their teams.**
 
@@ -100,10 +102,11 @@ transfer.
 
 ### Admin
 
-An Admin manages integrations, credentials, event sources, templates,
-announcements, workflows, schedules, operational settings, approvals, and
-technical diagnostics. An Admin cannot manage users, transfer ownership, restore
-backups, or perform Owner-only destructive maintenance.
+An Admin may create and manage Editor and Viewer accounts and may access
+implemented operational settings and sanitized diagnostics. An Admin cannot
+manage Owner or Admin accounts, transfer ownership, restore backups, or perform
+Owner-only destructive maintenance. Product-area administration remains planned
+until those areas are implemented.
 
 ### Editor
 
@@ -139,11 +142,12 @@ provider callback requires a reachable public HTTPS URL.
 
 ### Add a local user
 
-The Owner creates the account and role. Creator Toolkit generates a 24-hour,
-single-use setup link, shows it once, and stores only a hash of its opaque
-token. The Owner shares the link out of band. The new user chooses their own
-password. The Owner may revoke or regenerate an unused link. No email service
-or public registration is involved.
+The Owner creates Admin, Editor, or Viewer accounts. An Admin may create Editor
+or Viewer accounts. Creator Toolkit generates a 24-hour, single-use activation
+link, shows it once, and stores only a hash of its opaque token. The authorized
+creator shares the link out of band. The new user chooses their own password.
+An authorized manager may regenerate an unused link, which revokes the prior
+one. No email service or public registration is involved.
 
 ### Connect a destination
 
