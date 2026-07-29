@@ -167,6 +167,16 @@ Tests must cover both allowed and denied operations for every role, forged
 requests to hidden actions, stale cookies, disabled users, role transitions,
 and ownership transfer failure rollback.
 
+The authenticated application shell is protected by the application-access
+policy. Users, Settings, and Debug require the Owner/Admin administration
+policy; their navigation visibility mirrors but does not replace server-side
+enforcement. The Users read model exposes only username, role, account state,
+and authorized workflow links. Settings exposes configuration presence and
+trusted-entry counts, never values. Debug uses a fixed allowlist containing safe
+booleans, version, diagnostic references, fixed diagnostic codes, and UTC
+timestamps. Product-area pages are explicit non-functional empty states and
+contain no provider or publishing operations.
+
 ## Secret storage
 
 Connector credentials are encrypted with ASP.NET Core Data Protection before

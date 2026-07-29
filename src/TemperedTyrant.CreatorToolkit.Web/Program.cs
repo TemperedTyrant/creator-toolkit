@@ -10,6 +10,7 @@ using TemperedTyrant.CreatorToolkit.Infrastructure.ProcessCoordination;
 using TemperedTyrant.CreatorToolkit.Web.Authorization;
 using TemperedTyrant.CreatorToolkit.Web.Commands;
 using TemperedTyrant.CreatorToolkit.Web.Configuration;
+using TemperedTyrant.CreatorToolkit.Web.Diagnostics;
 using TemperedTyrant.CreatorToolkit.Web.ErrorHandling;
 using TemperedTyrant.CreatorToolkit.Web.RateLimiting;
 using TemperedTyrant.CreatorToolkit.Web.Security;
@@ -47,6 +48,7 @@ builder.Services.ConfigureApplicationCookie(
         options.EventsType = typeof(CreatorToolkitCookieEvents);
     });
 builder.Services.AddScoped<CreatorToolkitCookieEvents>();
+builder.Services.AddScoped<DebugStatusService>();
 builder.Services.Configure<SecurityStampValidatorOptions>(
     options => options.ValidationInterval = TimeSpan.Zero);
 builder.Services.AddAuthorization(

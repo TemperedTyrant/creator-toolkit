@@ -340,10 +340,13 @@ Normal pages receive only:
 - random diagnostic reference ID.
 
 Structured console logs contain technical context keyed by the same reference.
-An Owner/Admin-only Debug page exposes allowlisted technical fields such as
-application version, migration state, job counts, sanitized attempt categories,
-connection check timing, and configuration presence. Sanitized export uses the
-same or a stricter allowlist.
+The Owner/Admin-only Debug page currently exposes a dedicated allowlisted read
+model containing application version, initialization and migration state,
+database and key-ring accessibility booleans, configuration-presence counts,
+and recent fixed diagnostic references, codes, and timestamps. It does not
+expose raw entities, configuration, logs, exceptions, paths, SQL, or request
+data. Job and provider fields remain absent until their separately reviewed
+implementations exist.
 
 Secrets, authorization data, webhook URLs, internal payloads, and encryption
 keys never enter user errors, diagnostics, exports, or logs.

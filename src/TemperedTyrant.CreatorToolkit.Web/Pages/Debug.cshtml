@@ -1,0 +1,63 @@
+@page
+@model DebugModel
+@{
+    ViewData["Title"] = "Debug";
+}
+<header class="page-heading">
+    <h1>Debug</h1>
+    <p class="lede">Sanitized operational status and diagnostic references.</p>
+</header>
+
+<section class="card" aria-labelledby="runtime-heading">
+    <h2 id="runtime-heading">Runtime status</h2>
+    <dl class="status-list">
+        <dt>Application version</dt>
+        <dd>@Model.Status.ApplicationVersion</dd>
+        <dt>Installation initialized</dt>
+        <dd>@(Model.Status.InstallationInitialized ? "Yes" : "No")</dd>
+        <dt>Database accessible</dt>
+        <dd>@(Model.Status.DatabaseAccessible ? "Yes" : "No")</dd>
+        <dt>Migration current</dt>
+        <dd>@(Model.Status.MigrationsCurrent ? "Yes" : "No")</dd>
+        <dt>Key ring accessible</dt>
+        <dd>@(Model.Status.KeyRingAccessible ? "Yes" : "No")</dd>
+        <dt>Public URL configured</dt>
+        <dd>@(Model.Status.PublicUrlConfigured ? "Yes" : "No")</dd>
+        <dt>Trusted proxy entries</dt>
+        <dd>@Model.Status.TrustedProxyCount</dd>
+        <dt>Trusted network entries</dt>
+        <dd>@Model.Status.TrustedNetworkCount</dd>
+    </dl>
+</section>
+
+<section aria-labelledby="diagnostics-heading">
+    <h2 id="diagnostics-heading">Recent diagnostics</h2>
+    @if (Model.Status.RecentDiagnostics.Count == 0)
+    {
+        <p class="notice">No persisted unexpected-failure diagnostics are available.</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">Reference</th>
+                        <th scope="col">Occurred (UTC)</th>
+                        <th scope="col">Code</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var diagnostic in Model.Status.RecentDiagnostics)
+                {
+                    <tr>
+                        <td>@diagnostic.Reference</td>
+                        <td>@diagnostic.OccurredAtUtc.ToString("u")</td>
+                        <td>@diagnostic.Code</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>

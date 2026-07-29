@@ -34,8 +34,8 @@ public sealed class ChangePasswordModel(
     [Display(Name = "Confirm new password")]
     public string ConfirmPassword { get; set; } = string.Empty;
 
-    [TempData]
-    public bool PasswordChanged { get; set; }
+    [BindProperty(SupportsGet = true)]
+    public string? ReturnUrl { get; set; }
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
@@ -93,8 +93,10 @@ public sealed class ChangePasswordModel(
         await transaction.CommitAsync(cancellationToken);
         await signInManager.RefreshSignInAsync(user);
 
-        PasswordChanged = true;
-        return RedirectToPage();
+        TempData["StatusMessage"] = "Your password was changed.";
+        return !string.IsNullOrEmpty(ReturnUrl) && Url.IsLocalUrl(ReturnUrl)
+            ? LocalRedirect(ReturnUrl)
+            : RedirectToPage("/Dashboard");
     }
 
     private static string ToSafeValidationMessage(IdentityError error)

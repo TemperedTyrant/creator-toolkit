@@ -1,35 +1,31 @@
 @page
 @model TemperedTyrant.CreatorToolkit.Web.Pages.Account.TransferOwnershipModel
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Transfer ownership</title>
-</head>
-<body>
-    <main>
-        <h1>Transfer ownership</h1>
-        <p>The selected account becomes Owner and your account becomes Admin.</p>
-        <div asp-validation-summary="ModelOnly"></div>
-        <form method="post">
-            <input asp-for="ExpectedOwnershipRevision" type="hidden">
-            <div>
-                <label asp-for="TargetUserId">New Owner</label>
-                <select asp-for="TargetUserId">
-                    @foreach (var target in Model.Targets)
-                    {
-                        <option value="@target.UserId">@target.DisplayName (@target.UserName)</option>
-                    }
-                </select>
-            </div>
-            <div>
-                <label asp-for="CurrentPassword">Current password</label>
-                <input asp-for="CurrentPassword" type="password" autocomplete="current-password">
-                <span asp-validation-for="CurrentPassword"></span>
-            </div>
-            <button type="submit">Transfer ownership</button>
-        </form>
-    </main>
-</body>
-</html>
+@{
+    ViewData["Title"] = "Transfer ownership";
+}
+<header class="page-heading">
+    <h1>Transfer ownership</h1>
+    <p class="lede">The selected account becomes Owner and your account becomes Admin.</p>
+</header>
+<div asp-validation-summary="ModelOnly"></div>
+<form method="post">
+    <input asp-for="ExpectedOwnershipRevision" type="hidden">
+    <div>
+        <label asp-for="TargetUserId">New Owner</label>
+        <select asp-for="TargetUserId">
+            @foreach (var target in Model.Targets)
+            {
+                <option value="@target.UserId">@target.DisplayName (@target.UserName)</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label asp-for="CurrentPassword">Current password</label>
+        <input asp-for="CurrentPassword" type="password" autocomplete="current-password">
+        <span asp-validation-for="CurrentPassword"></span>
+    </div>
+    <div class="actions">
+        <button type="submit">Transfer ownership</button>
+        <a class="button secondary" asp-page="/Users">Cancel</a>
+    </div>
+</form>

@@ -43,7 +43,7 @@ public sealed class SecurityHeadersTests
         await middleware.InvokeAsync(sensitiveContext);
 
         Assert.Equal(
-            "default-src 'none'; object-src 'none'; base-uri 'none'; "
+            "default-src 'none'; style-src 'self'; object-src 'none'; base-uri 'none'; "
             + "frame-ancestors 'none'; form-action 'self'",
             sensitiveContext.Response.Headers.ContentSecurityPolicy);
         Assert.Equal("no-store", sensitiveContext.Response.Headers.CacheControl);

@@ -38,7 +38,7 @@ public sealed class LoginModel(
     {
         if (User.Identity?.IsAuthenticated == true)
         {
-            return RedirectToPage("/ChangePassword");
+            return RedirectToPage("/Dashboard");
         }
 
         return Page();
@@ -114,7 +114,7 @@ public sealed class LoginModel(
 
         return !string.IsNullOrEmpty(ReturnUrl) && Url.IsLocalUrl(ReturnUrl)
             ? LocalRedirect(ReturnUrl)
-            : RedirectToPage("/ChangePassword");
+            : RedirectToPage("/Dashboard");
     }
 
     private void ClearPassword()

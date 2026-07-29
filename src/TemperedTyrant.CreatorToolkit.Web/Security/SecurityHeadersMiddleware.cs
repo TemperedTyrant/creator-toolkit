@@ -7,7 +7,7 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
         + "frame-ancestors 'none'; form-action 'self'";
 
     internal const string SensitiveContentSecurityPolicy =
-        "default-src 'none'; object-src 'none'; base-uri 'none'; "
+        "default-src 'none'; style-src 'self'; object-src 'none'; base-uri 'none'; "
         + "frame-ancestors 'none'; form-action 'self'";
 
     internal const string SetupContentSecurityPolicy =

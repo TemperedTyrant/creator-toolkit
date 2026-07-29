@@ -1,66 +1,64 @@
 @page
 @model TemperedTyrant.CreatorToolkit.Web.Pages.Account.ManageUserModel
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Manage account</title>
-</head>
-<body>
-    <main>
-        <h1>Manage account</h1>
-        @if (Model.Target is not null)
+@{
+    ViewData["Title"] = "Manage account";
+}
+<header class="page-heading">
+    <h1>Manage account</h1>
+    @if (Model.Target is not null)
+    {
+        <p class="lede">@Model.Target.DisplayName (@Model.Target.UserName)</p>
+        <p>Role: @Model.Target.Role · State: @(Model.Target.IsActivated ? (Model.Target.IsEnabled ? "Active" : "Disabled") : "Pending")</p>
+    }
+</header>
+@if (Model.OneTimeActivationLink is not null)
+{
+    <section class="notice">
+        <h2>Replacement activation link</h2>
+        <p>Copy this link now. It cannot be retrieved later.</p>
+        <p><a href="@Model.OneTimeActivationLink">@Model.OneTimeActivationLink</a></p>
+    </section>
+}
+<div asp-validation-summary="ModelOnly"></div>
+@if (Model.Target is not null)
+{
+    <section class="card">
+        <h2>Role</h2>
+        <form method="post" asp-page-handler="Role">
+            <input asp-for="UserId" type="hidden">
+            <input asp-for="ExpectedConcurrencyStamp" type="hidden">
+            <label asp-for="NewRole">Role</label>
+            <select asp-for="NewRole">
+                @foreach (string role in Model.Target.AssignableRoles)
+                {
+                    <option value="@role">@role</option>
+                }
+            </select>
+            <button type="submit">Change role</button>
+        </form>
+    </section>
+    <div class="actions">
+        @if (!Model.Target.IsActivated)
         {
-            <p>@Model.Target.DisplayName (@Model.Target.UserName)</p>
-            <p>Current role: @Model.Target.Role</p>
-            <p>Status: @(Model.Target.IsActivated ? (Model.Target.IsEnabled ? "Active" : "Disabled") : "Pending")</p>
-        }
-        @if (Model.OneTimeActivationLink is not null)
-        {
-            <section>
-                <h2>Replacement activation link</h2>
-                <p>Copy this link now. It cannot be retrieved later.</p>
-                <p><a href="@Model.OneTimeActivationLink">@Model.OneTimeActivationLink</a></p>
-            </section>
-        }
-        <div asp-validation-summary="ModelOnly"></div>
-        @if (Model.Target is not null)
-        {
-            <form method="post" asp-page-handler="Role">
+            <form method="post" asp-page-handler="RegenerateActivation">
                 <input asp-for="UserId" type="hidden">
                 <input asp-for="ExpectedConcurrencyStamp" type="hidden">
-                <label asp-for="NewRole">Role</label>
-                <select asp-for="NewRole">
-                    @foreach (string role in Model.Target.AssignableRoles)
-                    {
-                        <option value="@role">@role</option>
-                    }
-                </select>
-                <button type="submit">Change role</button>
-            </form>
-            @if (!Model.Target.IsActivated)
-            {
-                <form method="post" asp-page-handler="RegenerateActivation">
-                    <input asp-for="UserId" type="hidden">
-                    <input asp-for="ExpectedConcurrencyStamp" type="hidden">
-                    <button type="submit">Regenerate activation link</button>
-                </form>
-            }
-            @if (Model.Target.IsEnabled)
-            {
-                <form method="post" asp-page-handler="Disable">
-                    <input asp-for="UserId" type="hidden">
-                    <input asp-for="ExpectedConcurrencyStamp" type="hidden">
-                    <button type="submit">Disable account</button>
-                </form>
-            }
-            <form method="post" asp-page-handler="Delete">
-                <input asp-for="UserId" type="hidden">
-                <input asp-for="ExpectedConcurrencyStamp" type="hidden">
-                <button type="submit">Delete account</button>
+                <button type="submit">Regenerate activation link</button>
             </form>
         }
-    </main>
-</body>
-</html>
+        @if (Model.Target.IsEnabled)
+        {
+            <form method="post" asp-page-handler="Disable">
+                <input asp-for="UserId" type="hidden">
+                <input asp-for="ExpectedConcurrencyStamp" type="hidden">
+                <button type="submit">Disable account</button>
+            </form>
+        }
+        <form method="post" asp-page-handler="Delete">
+            <input asp-for="UserId" type="hidden">
+            <input asp-for="ExpectedConcurrencyStamp" type="hidden">
+            <button type="submit">Delete account</button>
+        </form>
+        <a class="button secondary" asp-page="/Users">Back to users</a>
+    </div>
+}

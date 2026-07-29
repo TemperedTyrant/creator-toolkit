@@ -405,6 +405,7 @@ public sealed partial class AuthenticationAndSetupHttpTests
                     ["ConfirmPassword"] = newPassword,
                 }));
         Assert.Equal(HttpStatusCode.Redirect, change.StatusCode);
+        Assert.Equal("/Dashboard", change.Headers.Location?.OriginalString);
 
         string logoutHtml = await client.GetStringAsync("/Logout");
         HttpResponseMessage logout = await client.PostAsync(

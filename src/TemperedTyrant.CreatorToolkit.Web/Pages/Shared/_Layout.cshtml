@@ -1,0 +1,47 @@
+@using TemperedTyrant.CreatorToolkit.Infrastructure.Identity
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>@ViewData["Title"] · Creator Toolkit</title>
+    <link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <header class="site-header">
+        <div class="shell header-content">
+            <a class="brand" asp-page="/Dashboard">Creator Toolkit</a>
+            <nav aria-label="Primary navigation">
+                <ul class="primary-nav">
+                    <li><a asp-page="/Dashboard">Dashboard</a></li>
+                    <li><a asp-page="/Announcements">Announcements</a></li>
+                    <li><a asp-page="/Destinations">Destinations</a></li>
+                    <li><a asp-page="/EventSources">Event Sources</a></li>
+                    <li><a asp-page="/PublishHistory">Publish History</a></li>
+                    @if (User.IsInRole(SystemRoles.Owner) || User.IsInRole(SystemRoles.Admin))
+                    {
+                        <li><a asp-page="/Users">Users</a></li>
+                        <li><a asp-page="/Settings">Settings</a></li>
+                        <li><a asp-page="/Debug">Debug</a></li>
+                    }
+                </ul>
+            </nav>
+            <div class="account-nav">
+                <span class="account-name">@User.Identity?.Name</span>
+                <a asp-page="/ChangePassword">Change password</a>
+                <form method="post" asp-page="/Logout">
+                    <button class="link-button" type="submit">Sign out</button>
+                </form>
+            </div>
+        </div>
+    </header>
+    <main id="main-content" class="shell page-content" tabindex="-1">
+        @RenderBody()
+    </main>
+    <footer class="shell site-footer">
+        <span>TemperedTyrant Creator Toolkit</span>
+        <span>Pre-alpha application foundation</span>
+    </footer>
+</body>
+</html>

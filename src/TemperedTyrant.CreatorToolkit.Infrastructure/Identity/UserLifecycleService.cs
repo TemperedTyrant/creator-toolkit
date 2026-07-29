@@ -113,6 +113,57 @@ public sealed class UserLifecycleService(
         };
     }
 
+    public async Task<UserDirectoryResult?> GetUserDirectoryAsync(
+        Guid actorUserId,
+        CancellationToken cancellationToken = default)
+    {
+        ApplicationUser? actor = await userManager.FindByIdAsync(actorUserId.ToString());
+        string? actorRole = await GetActiveManagerRoleAsync(actor);
+        if (actorRole is null)
+        {
+            return null;
+        }
+
+        Guid ownerUserId = await dbContext.Ownerships
+            .AsNoTracking()
+            .Select(ownership => ownership.OwnerUserId)
+            .SingleAsync(cancellationToken);
+        ApplicationUser[] users = await userManager.Users
+            .AsNoTracking()
+            .OrderBy(user => user.NormalizedUserName)
+            .ToArrayAsync(cancellationToken);
+        List<UserDirectoryEntry> entries = new(users.Length);
+        foreach (ApplicationUser user in users)
+        {
+            string? role = await GetSingleRoleAsync(user);
+            if (role is null)
+            {
+                continue;
+            }
+
+            UserAccountState state = user.ActivatedAtUtc is null
+                ? UserAccountState.Pending
+                : user.IsEnabled
+                    ? UserAccountState.Active
+                    : UserAccountState.Disabled;
+            bool canManage = user.Id != ownerUserId
+                && user.Id != actorUserId
+                && CanManage(actorRole, role, role);
+            entries.Add(
+                new UserDirectoryEntry(
+                    user.Id,
+                    user.UserName!,
+                    role,
+                    state,
+                    canManage));
+        }
+
+        return new UserDirectoryResult(
+            actorRole,
+            entries,
+            actorRole == SystemRoles.Owner);
+    }
+
     public async Task<ManageableUser?> GetManageableUserAsync(
         Guid actorUserId,
         Guid targetUserId,
@@ -614,3 +665,22 @@ public sealed record ManageableUser(
     bool IsActivated,
     string ConcurrencyStamp,
     IReadOnlyList<string> AssignableRoles);
+
+public sealed record UserDirectoryResult(
+    string ActorRole,
+    IReadOnlyList<UserDirectoryEntry> Users,
+    bool CanTransferOwnership);
+
+public sealed record UserDirectoryEntry(
+    Guid UserId,
+    string UserName,
+    string Role,
+    UserAccountState State,
+    bool CanManage);
+
+public enum UserAccountState
+{
+    Pending = 1,
+    Active = 2,
+    Disabled = 3,
+}

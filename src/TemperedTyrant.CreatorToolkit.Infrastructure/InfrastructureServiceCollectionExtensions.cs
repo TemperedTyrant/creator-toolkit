@@ -13,6 +13,7 @@ using TemperedTyrant.CreatorToolkit.Infrastructure.Diagnostics;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
 using TemperedTyrant.CreatorToolkit.Infrastructure.ProcessCoordination;
+using TemperedTyrant.CreatorToolkit.Infrastructure.ReadModels;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Security;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Setup;
 
@@ -114,6 +115,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<OwnershipTransferService>();
         services.AddScoped<OwnerRecoveryIssuer>();
         services.AddScoped<OwnerRecoveryService>();
+        services.AddScoped<ApplicationShellQueryService>();
 
         return services;
     }

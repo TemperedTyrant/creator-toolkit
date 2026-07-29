@@ -1,48 +1,45 @@
 @page
 @model TemperedTyrant.CreatorToolkit.Web.Pages.Account.CreateUserModel
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Create pending account</title>
-</head>
-<body>
-    <main>
-        <h1>Create pending account</h1>
-        @if (Model.OneTimeActivationLink is not null)
-        {
-            <section>
-                <h2>One-time activation link</h2>
-                <p>Copy this link now. It cannot be retrieved later.</p>
-                <p><a href="@Model.OneTimeActivationLink">@Model.OneTimeActivationLink</a></p>
-                <p><a asp-page="/Account/ManageUser" asp-route-userId="@Model.CreatedUserId">Manage this account</a></p>
-            </section>
-        }
-        <div asp-validation-summary="ModelOnly"></div>
-        <form method="post" autocomplete="off">
-            <div>
-                <label asp-for="UserName"></label>
-                <input asp-for="UserName" autocomplete="off">
-                <span asp-validation-for="UserName"></span>
-            </div>
-            <div>
-                <label asp-for="DisplayName"></label>
-                <input asp-for="DisplayName" autocomplete="off">
-                <span asp-validation-for="DisplayName"></span>
-            </div>
-            <div>
-                <label asp-for="Role"></label>
-                <select asp-for="Role">
-                    @foreach (string role in Model.AvailableRoles)
-                    {
-                        <option value="@role">@role</option>
-                    }
-                </select>
-                <span asp-validation-for="Role"></span>
-            </div>
-            <button type="submit">Create account</button>
-        </form>
-    </main>
-</body>
-</html>
+@{
+    ViewData["Title"] = "Create pending account";
+}
+<header class="page-heading">
+    <h1>Create pending account</h1>
+    <p class="lede">Create a local account that must be activated before sign-in.</p>
+</header>
+@if (Model.OneTimeActivationLink is not null)
+{
+    <section class="notice">
+        <h2>One-time activation link</h2>
+        <p>Copy this link now. It cannot be retrieved later.</p>
+        <p><a href="@Model.OneTimeActivationLink">@Model.OneTimeActivationLink</a></p>
+        <p><a asp-page="/Account/ManageUser" asp-route-userId="@Model.CreatedUserId">Manage this account</a></p>
+    </section>
+}
+<div asp-validation-summary="ModelOnly"></div>
+<form method="post" autocomplete="off">
+    <div>
+        <label asp-for="UserName"></label>
+        <input asp-for="UserName" autocomplete="off">
+        <span asp-validation-for="UserName"></span>
+    </div>
+    <div>
+        <label asp-for="DisplayName"></label>
+        <input asp-for="DisplayName" autocomplete="off">
+        <span asp-validation-for="DisplayName"></span>
+    </div>
+    <div>
+        <label asp-for="Role"></label>
+        <select asp-for="Role">
+            @foreach (string role in Model.AvailableRoles)
+            {
+                <option value="@role">@role</option>
+            }
+        </select>
+        <span asp-validation-for="Role"></span>
+    </div>
+    <div class="actions">
+        <button type="submit">Create account</button>
+        <a class="button secondary" asp-page="/Users">Back to users</a>
+    </div>
+</form>
