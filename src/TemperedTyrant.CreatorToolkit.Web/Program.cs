@@ -50,6 +50,9 @@ builder.Services.ConfigureApplicationCookie(
     });
 builder.Services.AddScoped<CreatorToolkitCookieEvents>();
 builder.Services.AddScoped<DebugStatusService>();
+builder.Services.AddSingleton<ApplicationHostLockLifetime>();
+builder.Services.AddSingleton<IHostedService>(
+    provider => provider.GetRequiredService<ApplicationHostLockLifetime>());
 builder.Services.AddSingleton<ApplicationLifecycleCoordinator>();
 builder.Services.AddSingleton(ApplicationLifecycleOptions.Default);
 builder.Services.AddHostedService<ApplicationLifecycleHostedService>();
@@ -125,7 +128,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(
         }
     });
 
-WebApplication app = builder.Build();
+await using WebApplication app = builder.Build();
 
 if (args.Length == 1
     && string.Equals(args[0], BootstrapOwnerCommand.Name, StringComparison.Ordinal))
@@ -162,8 +165,8 @@ if (args.Length >= 1
         nonInteractive: args.Length == 2);
 }
 
-await using ApplicationHostLease hostLease = await app.Services
-    .GetRequiredService<ApplicationHostLock>()
+await app.Services
+    .GetRequiredService<ApplicationHostLockLifetime>()
     .AcquireAsync(app.Lifetime.ApplicationStopping);
 
 await app.Services

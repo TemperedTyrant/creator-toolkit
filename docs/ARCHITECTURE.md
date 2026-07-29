@@ -281,11 +281,20 @@ restart.
 
 ## In-process lifecycle foundation
 
-The current application host has one framework `IHostedService` that coordinates
+The current application host has two narrowly scoped framework `IHostedService`
+registrations: one owns the application-host lock lifetime and one coordinates
 only fixed in-memory lifecycle states: Starting, Running, Stopping, Stopped, and
-Failed. It starts after configuration validation, the long-running application
-host lock, migrations and database initialization, and Data Protection key-ring
-validation. Startup failure fails the host closed.
+Failed. Lifecycle coordination starts after configuration validation, the
+long-running application-host lock, migrations and database initialization, and
+Data Protection key-ring validation. Startup failure fails the host closed.
+
+The application-host lock is acquired before persistence initialization and is
+owned by a dedicated host-lifetime component. That component starts before the
+lifecycle coordinator and releases the lease in the hosted `StoppedAsync` phase,
+after all hosted-service `StopAsync` work. Host shutdown therefore does not
+complete until the lock lease has been disposed. Application disposal provides
+the same release guarantee when startup fails before or during hosted-service
+startup.
 
 Shutdown observes the host stopping signal and an internal ten-second bound;
 the host-level shutdown timeout is fifteen seconds so the internal bound can
