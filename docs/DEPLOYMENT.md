@@ -199,6 +199,13 @@ cancellation, and leaves or releases recoverable SQLite leases. Expired leases
 allow crash recovery after an ungraceful stop. Durable retry state remains in
 SQLite across restarts.
 
+The currently implemented hosted-service foundation does not run jobs. It
+tracks a fixed in-memory application lifecycle and applies a bounded graceful
+shutdown. The long-running web-host lock remains held for the process lifetime,
+while bootstrap and recovery commands continue to use their short
+administrative coordination paths. Health and readiness endpoints are not yet
+implemented.
+
 Logs go to stdout/stderr as structured records for Compose collection. Log
 rotation is the container runtime's responsibility. Tokens, credentials,
 webhook URLs, authorization headers, cookies, keys, and provider bodies are

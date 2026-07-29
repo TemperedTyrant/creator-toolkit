@@ -6,29 +6,38 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace TemperedTyrant.CreatorToolkit.IntegrationTests.TestSupport;
 
-internal sealed class CreatorToolkitWebFactory(
-    Action<IServiceCollection>? configureServices = null)
-    : WebApplicationFactory<Program>
+internal sealed class CreatorToolkitWebFactory : WebApplicationFactory<Program>
 {
-    private readonly TestDataDirectory _data = new();
+    private readonly Action<IServiceCollection>? _configureServices;
+    private readonly TestDataDirectory? _ownedData;
+    private readonly string _dataDirectory;
 
-    internal string DataDirectory => _data.Path;
+    internal CreatorToolkitWebFactory(
+        Action<IServiceCollection>? configureServices = null,
+        string? dataDirectory = null)
+    {
+        _configureServices = configureServices;
+        _ownedData = dataDirectory is null ? new TestDataDirectory() : null;
+        _dataDirectory = dataDirectory ?? _ownedData!.Path;
+    }
+
+    internal string DataDirectory => _dataDirectory;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseSetting("DataDirectory", _data.Path);
+        builder.UseSetting("DataDirectory", _dataDirectory);
         builder.ConfigureAppConfiguration(
             (_, configuration) =>
             {
                 configuration.AddInMemoryCollection(
                     new Dictionary<string, string?>
                     {
-                        ["DataDirectory"] = _data.Path,
+                        ["DataDirectory"] = _dataDirectory,
                     });
             });
-        if (configureServices is not null)
+        if (_configureServices is not null)
         {
-            builder.ConfigureTestServices(configureServices);
+            builder.ConfigureTestServices(_configureServices);
         }
     }
 
@@ -37,7 +46,7 @@ internal sealed class CreatorToolkitWebFactory(
         base.Dispose(disposing);
         if (disposing)
         {
-            _data.Dispose();
+            _ownedData?.Dispose();
         }
     }
 }

@@ -249,6 +249,12 @@ fixed allowlisted exception-type classification, but never the exception
 object, message, stack trace, path, connection string, request target, or
 submitted value.
 
+Application lifecycle logging uses fixed parameterless messages for starting,
+running, stopping, stopped, startup failure, shutdown timeout, and shutdown
+cancellation or failure. It never attaches exception objects or accepts paths,
+configuration, connection details, or user-controlled fields. Debug exposes
+only the fixed in-memory lifecycle enum through its existing allowlist.
+
 ## Normal errors, Debug, and exports
 
 Normal pages show a safe status, short explanation, recommended action, and

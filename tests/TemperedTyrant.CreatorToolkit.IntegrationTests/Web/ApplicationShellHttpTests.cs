@@ -316,6 +316,7 @@ public sealed partial class ApplicationShellHttpTests
         }
 
         string debug = await client.GetStringAsync("/Debug");
+        Assert.Contains("<dd>Running</dd>", debug, StringComparison.Ordinal);
         Assert.Contains(reference, debug, StringComparison.Ordinal);
         Assert.Contains("infrastructure-failure", debug, StringComparison.Ordinal);
         Assert.DoesNotContain(securityStamp, debug, StringComparison.Ordinal);

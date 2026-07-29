@@ -1,13 +1,15 @@
 using Microsoft.AspNetCore.DataProtection;
 using TemperedTyrant.CreatorToolkit.Infrastructure.ReadModels;
 using TemperedTyrant.CreatorToolkit.Web.Configuration;
+using TemperedTyrant.CreatorToolkit.Web.Hosting;
 
 namespace TemperedTyrant.CreatorToolkit.Web.Diagnostics;
 
 public sealed class DebugStatusService(
     ApplicationShellQueryService queryService,
     IDataProtectionProvider dataProtectionProvider,
-    CreatorToolkitOptions options)
+    CreatorToolkitOptions options,
+    ApplicationLifecycleCoordinator lifecycleCoordinator)
 {
     public async Task<DebugPageStatus> GetAsync(
         CancellationToken cancellationToken = default)
@@ -18,6 +20,7 @@ public sealed class DebugStatusService(
         return new DebugPageStatus(
             ApplicationVersion: typeof(Program).Assembly.GetName().Version?.ToString(3)
                 ?? "unknown",
+            LifecycleState: lifecycleCoordinator.GetStatus().State,
             InstallationInitialized: persistence.InstallationInitialized,
             MigrationsCurrent: persistence.MigrationsCurrent,
             DatabaseAccessible: persistence.DatabaseAccessible,
@@ -55,6 +58,7 @@ public sealed class DebugStatusService(
 
 public sealed record DebugPageStatus(
     string ApplicationVersion,
+    ApplicationLifecycleState LifecycleState,
     bool InstallationInitialized,
     bool MigrationsCurrent,
     bool DatabaseAccessible,

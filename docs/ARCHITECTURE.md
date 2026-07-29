@@ -279,6 +279,24 @@ Hosted services stop claiming new work during graceful shutdown, honor
 cancellation, and leave or release leases so unfinished work can recover after
 restart.
 
+## In-process lifecycle foundation
+
+The current application host has one framework `IHostedService` that coordinates
+only fixed in-memory lifecycle states: Starting, Running, Stopping, Stopped, and
+Failed. It starts after configuration validation, the long-running application
+host lock, migrations and database initialization, and Data Protection key-ring
+validation. Startup failure fails the host closed.
+
+Shutdown observes the host stopping signal and an internal ten-second bound;
+the host-level shutdown timeout is fifteen seconds so the internal bound can
+finish first. The coordinator stops reporting that it accepts lifecycle work
+before shutdown completion begins. A timeout, cancellation, or shutdown failure
+leaves the in-memory state Failed rather than Running. Late completion cannot
+leave that terminal failure state or re-enable work, and late task faults are
+observed. The state is not persisted and does not implement jobs, scheduling,
+polling, retries, leases, or provider work. Health and readiness endpoints
+remain deferred.
+
 ## Announcement and approval state
 
 Expected states include Draft, PendingApproval, Approved, Scheduled, Queued,
