@@ -15,9 +15,18 @@ public sealed class ApplicationHostLock
 
     public async Task<ApplicationHostLease> AcquireAsync(CancellationToken cancellationToken = default)
     {
+        return await AcquireAsync(TimeSpan.Zero, cancellationToken);
+    }
+
+    public async Task<ApplicationHostLease> AcquireAsync(
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(timeout, TimeSpan.Zero);
+
         try
         {
-            FileProcessLockLease lease = await _processLock.AcquireAsync(TimeSpan.Zero, cancellationToken);
+            FileProcessLockLease lease = await _processLock.AcquireAsync(timeout, cancellationToken);
             return new ApplicationHostLease(lease);
         }
         catch (TimeoutException)
@@ -35,7 +44,7 @@ public sealed class ApplicationHostLock
 
 public sealed class ApplicationHostLease : IAsyncDisposable
 {
-    private readonly FileProcessLockLease _lease;
+    private FileProcessLockLease? _lease;
 
     internal ApplicationHostLease(FileProcessLockLease lease)
     {
@@ -44,6 +53,7 @@ public sealed class ApplicationHostLease : IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
-        return _lease.DisposeAsync();
+        FileProcessLockLease? lease = Interlocked.Exchange(ref _lease, null);
+        return lease is null ? ValueTask.CompletedTask : lease.DisposeAsync();
     }
 }

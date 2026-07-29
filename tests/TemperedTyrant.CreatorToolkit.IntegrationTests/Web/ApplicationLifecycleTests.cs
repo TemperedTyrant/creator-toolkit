@@ -222,6 +222,14 @@ public sealed class ApplicationLifecycleTests
     public async Task ActualHostShutdownBoundsWorkAndReleasesApplicationLock()
     {
         using TestDataDirectory normalData = new();
+        using TestDataDirectory failureData = new();
+        using TestDataDirectory timeoutData = new();
+        Assert.Equal(
+            3,
+            new HashSet<string>(
+                [normalData.Path, failureData.Path, timeoutData.Path],
+                StringComparer.Ordinal).Count);
+
         CreatorToolkitWebFactory normalFactory = new(dataDirectory: normalData.Path);
         using (HttpClient client = normalFactory.CreateClient())
         {
@@ -232,14 +240,14 @@ public sealed class ApplicationLifecycleTests
 
         await AssertHostLockUnavailableAsync(normalData.Path);
         await normalFactory.DisposeAsync();
+        await normalFactory.DisposeAsync();
         await AssertHostLockAvailableAsync(normalData.Path);
 
-        using TestDataDirectory failureData = new();
         HostBlockingLifecycleService? failingService = null;
         CreatorToolkitWebFactory failureFactory = new(
             services =>
             {
-                services.RemoveAll<IHostedService>();
+                PreserveOnlyApplicationHostLockLifetime(services);
                 services.AddSingleton<IHostedService>(
                     provider =>
                     {
@@ -269,12 +277,11 @@ public sealed class ApplicationLifecycleTests
             failingService.Coordinator.GetStatus().State);
         await AssertHostLockAvailableAsync(failureData.Path);
 
-        using TestDataDirectory timeoutData = new();
         HostBlockingLifecycleService? blockingService = null;
         CreatorToolkitWebFactory timeoutFactory = new(
             services =>
             {
-                services.RemoveAll<IHostedService>();
+                PreserveOnlyApplicationHostLockLifetime(services);
                 services.RemoveAll<ApplicationLifecycleOptions>();
                 services.AddSingleton(
                     new ApplicationLifecycleOptions(TimeSpan.FromMilliseconds(75)));
@@ -322,10 +329,13 @@ public sealed class ApplicationLifecycleTests
     public async Task StartupFailuresAfterLockAcquisitionReleaseApplicationLock()
     {
         using TestDataDirectory lifecycleFailureData = new();
+        using TestDataDirectory laterFailureData = new();
+        Assert.NotEqual(lifecycleFailureData.Path, laterFailureData.Path);
+
         CreatorToolkitWebFactory lifecycleFailureFactory = new(
             services =>
             {
-                services.RemoveAll<IHostedService>();
+                PreserveOnlyApplicationHostLockLifetime(services);
                 services.AddSingleton<IHostedService>(
                     provider => new FailingHostedLifecycleService(
                         provider.GetRequiredService<ApplicationLifecycleCoordinator>(),
@@ -340,7 +350,6 @@ public sealed class ApplicationLifecycleTests
         await lifecycleFailureFactory.DisposeAsync();
         await AssertHostLockAvailableAsync(lifecycleFailureData.Path);
 
-        using TestDataDirectory laterFailureData = new();
         CreatorToolkitWebFactory laterFailureFactory = new(
             services => services.AddSingleton<IHostedService, ThrowingStartupHostedService>(),
             laterFailureData.Path);
@@ -373,7 +382,15 @@ public sealed class ApplicationLifecycleTests
         await using ServiceProvider provider = TestServices.Create(dataDirectory);
         await using ApplicationHostLease lease = await provider
             .GetRequiredService<ApplicationHostLock>()
-            .AcquireAsync();
+            .AcquireAsync(TimeSpan.FromSeconds(1));
+    }
+
+    private static void PreserveOnlyApplicationHostLockLifetime(
+        IServiceCollection services)
+    {
+        services.RemoveAll<IHostedService>();
+        services.AddSingleton<IHostedService>(
+            provider => provider.GetRequiredService<ApplicationHostLockLifetime>());
     }
 
     private sealed class ControllableLifecycleService(
