@@ -115,6 +115,56 @@ public sealed class ConfigurationTests
         Assert.DoesNotContain(marker, exception.ToString(), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void TrustedForwardingSourcesAcceptPortableCommaSeparatedValues()
+    {
+        using TestDataDirectory root = new();
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["TrustedProxies"] =
+                        " 192.0.2.10, ,198.51.100.20,192.0.2.10 ",
+                    ["TrustedNetworks"] =
+                        " 192.0.2.0/24,,198.51.100.0/24,192.0.2.0/24 ",
+                })
+            .Build();
+
+        CreatorToolkitOptions options =
+            CreatorToolkitOptionsValidator.GetValidated(configuration, root.Path);
+
+        Assert.Equal(
+            ["192.0.2.10", "198.51.100.20"],
+            options.TrustedProxies.Select(address => address.ToString()));
+        Assert.Equal(
+            ["192.0.2.0/24", "198.51.100.0/24"],
+            options.TrustedNetworks.Select(network => network.ToString()));
+    }
+
+    [Fact]
+    public void TrustedForwardingSourcesTrimIgnoreEmptyAndDeduplicateEntries()
+    {
+        using TestDataDirectory root = new();
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["TrustedProxies:0"] = " 192.0.2.10 ",
+                    ["TrustedProxies:1"] = "",
+                    ["TrustedProxies:2"] = "192.0.2.10",
+                    ["TrustedNetworks:0"] = " 198.51.100.0/24 ",
+                    ["TrustedNetworks:1"] = "   ",
+                    ["TrustedNetworks:2"] = "198.51.100.0/24",
+                })
+            .Build();
+
+        CreatorToolkitOptions options =
+            CreatorToolkitOptionsValidator.GetValidated(configuration, root.Path);
+
+        Assert.Equal("192.0.2.10", Assert.Single(options.TrustedProxies).ToString());
+        Assert.Equal("198.51.100.0/24", Assert.Single(options.TrustedNetworks).ToString());
+    }
+
     private static IConfiguration CreateConfiguration(string publicUrl)
     {
         return new ConfigurationBuilder()

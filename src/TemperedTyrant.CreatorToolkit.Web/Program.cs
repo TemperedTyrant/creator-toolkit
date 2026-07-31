@@ -17,15 +17,30 @@ using TemperedTyrant.CreatorToolkit.Web.Hosting;
 using TemperedTyrant.CreatorToolkit.Web.RateLimiting;
 using TemperedTyrant.CreatorToolkit.Web.Security;
 
+if (args.Length == 1
+    && string.Equals(args[0], HealthcheckCommand.Name, StringComparison.Ordinal))
+{
+    return await HealthcheckCommand.RunAsync();
+}
+
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddEnvironmentVariables("CREATOR_TOOLKIT_");
 
-CreatorToolkitOptions toolkitOptions = CreatorToolkitOptionsValidator.GetValidated(
-    builder.Configuration,
-    builder.Environment.ContentRootPath);
+CreatorToolkitOptions toolkitOptions;
+try
+{
+    toolkitOptions = CreatorToolkitOptionsValidator.GetValidated(
+        builder.Configuration,
+        builder.Environment.ContentRootPath);
+    builder.Services.AddSingleton(toolkitOptions);
+    builder.Services.AddCreatorToolkitInfrastructure(toolkitOptions.DataDirectory);
+}
+catch (Exception)
+{
+    await Console.Error.WriteLineAsync("Application startup failed.");
+    return 1;
+}
 
-builder.Services.AddSingleton(toolkitOptions);
-builder.Services.AddCreatorToolkitInfrastructure(toolkitOptions.DataDirectory);
 builder.Services.AddRazorPages();
 builder.Services
     .AddAuthentication(
@@ -168,13 +183,21 @@ if (args.Length >= 1
         nonInteractive: args.Length == 2);
 }
 
-await app.Services
-    .GetRequiredService<ApplicationHostLockLifetime>()
-    .AcquireAsync(app.Lifetime.ApplicationStopping);
+try
+{
+    await app.Services
+        .GetRequiredService<ApplicationHostLockLifetime>()
+        .AcquireAsync(app.Lifetime.ApplicationStopping);
 
-await app.Services
-    .GetRequiredService<PersistenceInitializer>()
-    .InitializeAsync(app.Lifetime.ApplicationStopping);
+    await app.Services
+        .GetRequiredService<PersistenceInitializer>()
+        .InitializeAsync(app.Lifetime.ApplicationStopping);
+}
+catch (Exception)
+{
+    await Console.Error.WriteLineAsync("Application startup failed.");
+    return 1;
+}
 
 if (toolkitOptions.TrustedProxies.Count > 0
     || toolkitOptions.TrustedNetworks.Count > 0)

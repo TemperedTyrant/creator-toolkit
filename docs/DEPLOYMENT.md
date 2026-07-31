@@ -1,249 +1,182 @@
-# TemperedTyrant Creator Toolkit deployment design
+# Docker Compose deployment
 
-## Current status
+TemperedTyrant Creator Toolkit ships as one non-root application container with
+one named volume. SQLite and ASP.NET Core Data Protection key files live together
+in that volume. There is no database, cache, broker, worker, or reverse-proxy
+service in the supplied Compose deployment.
 
-TemperedTyrant Creator Toolkit does not yet ship an application image or Compose
-file. This document defines the deployment contract that milestone 1 must
-implement. Examples describe intended behavior and must not be treated as
-working commands until that milestone is complete.
+The deployment remains pre-alpha. Review changes before using it with data that
+matters.
 
-## Default shape
+## Start the application
 
-The supported version 1 deployment is:
-
-- one application container;
-- one named persistent volume;
-- SQLite as the embedded database;
-- no required external database, cache, queue, or identity provider;
-- no local creator agent;
-- Linux amd64 and arm64 images.
-
-No separate worker service, process, or container. Durable background jobs run through ASP.NET Core hosted services inside the application process.
-
-Normal startup should be close to:
+Docker Engine with Docker Compose is required. From the repository root:
 
 ```sh
-docker compose up -d
+cp .env.example .env
+docker compose up -d --build
+docker compose ps
 ```
 
-The checked-in Compose file will use portable defaults and a named volume. It
-will not contain a host-specific absolute path, domain, IP address, username, or
-secret.
+Compose builds `creator-toolkit:local` from the repository-relative Dockerfile
+and build context, so this works from a clean clone without a registry image.
+To build explicitly instead, run `docker build --tag creator-toolkit:local .`
+before `docker compose up -d`.
 
-## Planned configuration contract
+The default host origin is `http://127.0.0.1:8080`. The application listens on
+port `8080` inside the container, while Compose publishes it only on the host's
+loopback interface. `CREATOR_TOOLKIT_HOST_PORT` in `.env` changes the host port.
+A public URL is not required for a local installation.
 
-Milestone 1 should introduce project-prefixed environment settings equivalent
-to:
+The container healthcheck runs `creator-toolkit healthcheck`, which makes a
+short, fixed request to the container-local `/health/live` endpoint. It does not
+open SQLite, inspect migrations, initialize Data Protection, acquire the
+long-running application-host lock, or mutate application data. Operational
+readiness remains available separately at `/health/ready`.
 
-| Purpose | Planned behavior |
-| --- | --- |
-| Data directory | In-container portable default, overridable without changing application code |
-| Host port | Portable Compose default, overridable by the operator |
-| Bind address | Safe direct-localhost default with an explicit option for proxy/LAN exposure |
-| Public URL | Optional canonical external URL; required only for callbacks that need it |
-| Trusted proxies | Explicit proxy addresses/networks; never trust every forwarded header |
-| Log level | Structured console-log verbosity without enabling secret-bearing HTTP dumps |
-
-Exact variable names will be finalized with the milestone 1 configuration
-schema. A committable `.env.example` may contain non-secret examples and empty
-placeholders. Real `.env` files and Compose overrides containing secrets remain
-ignored.
-
-Connector credentials should normally be entered through the authenticated
-interface and encrypted in SQLite. Do not place provider credentials in the
-Compose file.
-
-## First startup
-
-Starting an empty volume leaves the application locked. Visiting it shows safe
-instructions but cannot create an Owner.
-
-The operator invokes an explicit command, planned in this form:
+View status and redacted application logs with:
 
 ```sh
-docker compose exec app creator-toolkit bootstrap-owner
+docker compose ps
+docker compose logs --follow creator-toolkit
 ```
 
-The command prints a cryptographically random, single-use bootstrap value only
-to that terminal. It expires after 30 minutes. The operator supplies it to the
-Owner setup page, creates the initial account, and completes workspace setup.
-Afterward, the setup endpoint and bootstrap generation are permanently disabled.
+## First Owner setup
 
-Changing the port binding or adding a reverse proxy before setup does not weaken
-this protection.
-
-## Localhost use
-
-Manual publishing, scheduling, Discord incoming-webhook delivery, generic
-outgoing-webhook delivery, and Bluesky app-password delivery make outbound
-connections only. They do not require:
-
-- a public domain;
-- inbound router configuration;
-- a TLS certificate at the application;
-- an OAuth callback.
-
-A direct-localhost operator may keep the safe default bind. The browser should
-still use the exact documented local origin so secure-cookie and antiforgery
-behavior remain predictable.
-
-## Reverse proxy use
-
-A reverse proxy may provide TLS and external routing. Operators must:
-
-1. configure the canonical public HTTPS URL;
-2. set the container bind/port exposure deliberately;
-3. configure only the actual proxy address or network as trusted;
-4. forward the original scheme and host using supported headers;
-5. preserve request-body limits and timeouts;
-6. ensure the management interface is not unintentionally public before setup.
-
-The application must not blindly trust `X-Forwarded-*` values from arbitrary
-clients. OAuth or provider callback documentation must display both the
-configured public URL and exact callback path, explain reachability, and test
-configuration before redirecting the user.
-
-Inbound generic, Twitch, YouTube, or future OAuth features may require a
-publicly reachable HTTPS URL. That requirement belongs to the integration, not
-to basic installation.
-
-## Persistent data
-
-The named volume contains:
-
-- SQLite database files and migration state;
-- ASP.NET Core Data Protection keys;
-- supported local backup staging data, if any;
-- other explicitly documented durable application state.
-
-Temporary files, build artifacts, and logs are not durable application state.
-The container runs as a non-root user and the volume must be writable only by
-the application identity.
-
-The data directory remains configurable so operators can use a compatible
-volume layout without embedding a developer's host path in the project.
-
-## Backups and restores
-
-Copying a live SQLite file without coordination can produce an inconsistent
-backup. The supported backup path will use SQLite's supported online backup
-mechanism or briefly coordinate writes, then package the database and required
-key material consistently.
-
-Only the Owner may initiate backup or restore through supported application
-operations. Backups:
-
-- contain sensitive encrypted data and the keys needed to use it;
-- must receive restrictive permissions and secure storage;
-- need an integrity manifest and format/application version;
-- must never be committed to Git;
-- should be tested by restoring into a separate disposable installation.
-
-Restore validates compatibility before replacing state, preserves the one-Owner
-invariant, does not re-enable first-run bootstrap, and records the operation.
-Exact backup/restore commands and recovery guarantees will be defined before the
-first public beta.
-
-## Owner recovery
-
-An operator with access to the container runtime needs a recovery path even when
-all browser sessions are unusable. The planned shape is:
+An empty installation is ready to serve Setup but cannot create an Owner until
+an operator issues a short-lived bootstrap capability:
 
 ```sh
-docker compose exec app creator-toolkit reset-owner
+docker compose exec creator-toolkit creator-toolkit bootstrap-owner
 ```
 
-The command requires `RESET OWNER` as explicit terminal confirmation. For
-noninteractive automation, pass `--yes`:
+The command prints the capability only to that terminal. Open `/Setup` at the
+configured local origin and enter the capability there. Do not place the output
+in `.env`, Compose configuration, shell history, tickets, or logs. The capability
+expires after 30 minutes and becomes permanently unavailable after installation
+initialization.
+
+Administrative commands use a separate, short coordination path and may run via
+`docker compose exec` while the web process holds the application-host lock. For
+example, Owner recovery remains available as documented by the command itself:
 
 ```sh
-creator-toolkit reset-owner --yes
+docker compose exec creator-toolkit creator-toolkit reset-owner
 ```
 
-It issues a 30-minute one-time recovery link, persists only a hash and
-lifecycle metadata, invalidates any prior unused recovery link and existing Owner
-sessions, and append an audit record. The raw link will appear only in that
-command's terminal and never in routine logs. It will not reveal the current
-password or any provider credential. Final syntax and confirmation safeguards
-are milestone 1 work.
+## Stop and restart
 
-## Upgrades
+Compose gives the application 30 seconds to stop. The host retains its existing
+15-second shutdown timeout and 10-second internal lifecycle bound. Stop or start
+without deleting persistent data with:
 
-The future release procedure will:
+```sh
+docker compose stop
+docker compose start
+```
 
-1. read the release notes and supported upgrade path;
-2. create and verify a backup;
-3. pull the new multi-architecture image;
-4. restart with `docker compose up -d`;
-5. apply compatible EF Core migrations under a startup lock;
-6. report readiness only after migrations and key access succeed;
-7. verify health, connection state, schedules, and job processing.
+Remove the application container and network while retaining the named volume
+with:
 
-Destructive or non-reversible migrations require an ADR, explicit release-note
-warning, and tested recovery path. Downgrades are not assumed safe.
+```sh
+docker compose down
+```
 
-## Health and operations
+Do not use `docker compose down --volumes` unless permanent deletion of the
+installation is intended. `restart: unless-stopped` restarts the application
+after an unexpected exit or Docker daemon restart, except when an operator has
+explicitly stopped it.
 
-The application exposes separate anonymous checks without credentials or
-sensitive detail:
+## Persistent volume, backup, and restore
 
-- `GET /health/live` returns HTTP 200 with `{"status":"live"}` when the current
-  process can answer HTTP. It does not inspect persistence, migrations, Data
-  Protection, installation state, or external services.
-- `GET /health/ready` returns HTTP 200 with `{"status":"ready"}` only after
-  validated configuration and persistence startup, while SQLite, migrations,
-  the EF model, Data Protection, and the Running lifecycle remain usable. It
-  returns HTTP 503 with `{"status":"not_ready"}` otherwise.
+The logical Compose volume `creator-toolkit-data` is mounted at `/app/data` and
+contains both:
 
-Both responses are fixed `application/json`, use `Cache-Control: no-store`, and
-are protected by the dedicated minimal health security-header profile. A valid
-first-run installation with no Owner is ready because onboarding state is not
-infrastructure readiness. Readiness polling has a two-second overall bound,
-uses shorter database-operation, command, and Data Protection bounds, coalesces
-concurrent work, performs no migration or data mutation, and does not persist
-diagnostics for expected failures. Each caller rechecks lifecycle and shutdown
-after shared probe work before returning ready. Unsupported methods return 405
-without running probes or entering authentication.
+- the SQLite database and its related files; and
+- the ASP.NET Core Data Protection key ring.
 
-Provider connection health belongs in the authenticated interface, not the
-unauthenticated container health response.
+Those files are one recovery unit. Losing the key ring can make protected data
+and authentication state unusable even if the database survives.
 
-On graceful shutdown, the hosted job runner stops claiming work, observes
-cancellation, and leaves or releases recoverable SQLite leases. Expired leases
-allow crash recovery after an ungraceful stop. Durable retry state remains in
-SQLite across restarts.
+The supported checkpoint-9 backup expectation is a stopped-container volume
+backup. Stop the application, use the operator's Docker volume backup tooling to
+copy the entire volume, then restart it. Do not copy only the SQLite database and
+do not copy a live database file without a SQLite-aware, coordinated procedure.
+No custom online backup system is included.
 
-The currently implemented hosted-service foundation does not run jobs. It
-tracks a fixed in-memory application lifecycle and applies a bounded graceful
-shutdown. The long-running web-host lock remains held for the process lifetime,
-and completed host shutdown includes disposal of that lock lease. Bootstrap and
-recovery commands continue to use their independent short administrative
-coordination paths. No container healthcheck command is implemented yet.
+Restore only while the application is stopped. Restore the database and Data
+Protection keys together from the same backup, retain their restrictive
+permissions and ownership by container UID `1654`, and then start the application
+and verify health and sign-in. Test backups by restoring them to an isolated,
+disposable installation.
 
-Logs go to stdout/stderr as structured records for Compose collection. Log
-rotation is the container runtime's responsibility. Tokens, credentials,
-webhook URLs, authorization headers, cookies, keys, and provider bodies are
-never logged.
+## Configuration
 
-## Multi-architecture release expectations
+`.env.example` contains safe defaults and commented placeholders. Copy it to the
+ignored `.env` file before making local changes.
 
-Public images must support `linux/amd64` and `linux/arm64` from the same source
-revision. CI must build and smoke-test both platforms, use an open-source build
-toolchain, publish provenance/checksum information when feasible, and avoid a
-paid hosted-service dependency.
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CREATOR_TOOLKIT_HOST_BIND` | `127.0.0.1` | Host interface used by the Compose port publication. |
+| `CREATOR_TOOLKIT_HOST_PORT` | `8080` | Host TCP port mapped to container port `8080`. |
+| `CREATOR_TOOLKIT_PUBLIC_URL` | unset | Optional canonical external URL; HTTPS is required except for loopback. |
+| `CREATOR_TOOLKIT_TRUSTED_PROXIES` | unset | Optional comma-separated proxy IP addresses. |
+| `CREATOR_TOOLKIT_TRUSTED_NETWORKS` | unset | Optional comma-separated proxy networks in CIDR notation. |
 
-Future releases use the product identity **TemperedTyrant Creator Toolkit** and
-the executable identifier `creator-toolkit`. The GitHub repository is
-`TemperedTyrant/creator-toolkit`. Permanent registry and package coordinates
-are intentionally not defined in this documentation phase.
+The Compose file fixes the in-container data directory and port to `/app/data`
+and `8080`. Provider credentials, bootstrap capabilities, recovery capabilities,
+and other secrets do not belong in `.env` or Compose configuration.
 
-## Post-v1 deployment extensions
+## Reverse-proxy boundary
 
-Planned authenticated browser-source pages remain part of the primary web
-application and may support OBS alerts, overlays, goals, labels, timers, and
-media presentation.
+The supplied Compose file intentionally does not run a reverse proxy and does
+not expose the application publicly by default. An operator adding an external
+proxy is responsible for TLS, DNS, access controls, request limits, timeouts, and
+network attachment.
 
-An optional local creator agent remains Exploratory. It would be separately
-installed and explicitly paired only for capabilities requiring local computer
-access. It is not present in version 1, is not required by the default server
-installation, and does not change the one-container version 1 deployment.
+For a reverse proxy deployment:
+
+1. deliberately change `CREATOR_TOOLKIT_HOST_BIND` from the loopback default only
+   as far as the proxy topology requires;
+2. set `CREATOR_TOOLKIT_PUBLIC_URL` to the canonical external HTTPS origin;
+3. configure only the actual proxy address or network in
+   `CREATOR_TOOLKIT_TRUSTED_PROXIES` or `CREATOR_TOOLKIT_TRUSTED_NETWORKS`;
+4. forward the original scheme and client address using `X-Forwarded-Proto` and
+   `X-Forwarded-For`; and
+5. keep the management and first-run Setup surface from becoming unintentionally
+   public.
+
+The application accepts one symmetrical forwarded-header hop and never trusts
+all proxies by default. Proxy or public-network deployment changes require an
+operator security review outside the supplied one-service Compose boundary.
+
+## Image design
+
+The Dockerfile restores and publishes with the official .NET SDK
+`10.0.302-noble` image and runs on the official ASP.NET Core
+`10.0.10-noble-chiseled-extra` image. `global.json` requests `10.0.100` with
+`feature` roll-forward. That deliberately accepts the repository host's
+`10.0.110` SDK and the container's `10.0.302` SDK, but only within .NET 10.0; it
+cannot select .NET 11. Local SDK feature bands may therefore differ and local
+builds are not claimed to be exactly reproducible. The digest-pinned builder is
+the reviewed deterministic container build environment. Checkpoint 10 CI will
+explicitly verify that reviewed SDK/container build combination.
+
+Both base-image tags are pinned to reviewed immutable multi-platform
+manifest-list digests, and those manifests include `linux/amd64` and
+`linux/arm64` children. The Dockerfile retains architecture-neutral application
+build behavior. Base-manifest inspection is not proof of a complete ARM64
+application build: actual multi-platform application build verification remains
+pending checkpoint 10 CI because it could not be run on the current host.
+
+Only published application output and the readable `LICENSE` and
+`THIRD_PARTY_NOTICES.md` files enter the final image. The latter accompanies the
+embedded SecLists common-password resource and records its source, digest,
+copyright, and MIT license. The Chiseled runtime has no shell or package manager,
+and the final image contains no SDK, source, test packages, build tools,
+Playwright browsers, `curl`, or `wget`. The application runs as numeric non-root
+UID/GID `1654:1654`; application binaries and notices remain root-owned and are
+not writable by that identity. Compose drops all Linux capabilities and enables
+`no-new-privileges`. The named volume is seeded with narrowly scoped ownership
+for the runtime identity; incompatible volume permissions cause startup to fail
+rather than fall back to root or a different data location.

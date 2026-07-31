@@ -79,6 +79,18 @@ Docker Compose will be the default deployment method. Direct localhost use will
 not require a public domain. A configured public URL will be needed only for
 features whose providers call back into the installation.
 
+The current pre-alpha application can be built and run locally with the supplied
+single-service Compose deployment:
+
+```sh
+cp .env.example .env
+docker compose up -d --build
+```
+
+It publishes only to `127.0.0.1:8080` by default. See
+[Docker Compose deployment](docs/DEPLOYMENT.md) for first-run bootstrap,
+persistence, backup, shutdown, and reverse-proxy boundaries.
+
 No separate worker service, process, or container. Durable background jobs run through ASP.NET Core hosted services inside the application process.
 
 See [Product](docs/PRODUCT.md), [Architecture](docs/ARCHITECTURE.md),
