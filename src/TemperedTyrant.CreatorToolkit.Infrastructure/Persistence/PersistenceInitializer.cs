@@ -1,28 +1,33 @@
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Security;
 
 namespace TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
 
 public sealed partial class PersistenceInitializer(
     MigrationCoordinator migrationCoordinator,
     IDbContextFactory<CreatorToolkitDbContext> contextFactory,
-    IDataProtectionProvider dataProtectionProvider,
+    IDataProtectionValidator dataProtectionValidator,
     DataDirectoryLayoutProvider layoutProvider,
+    PersistenceInitializationState initializationState,
     ILogger<PersistenceInitializer> logger)
 {
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
+        initializationState.MarkRunning();
         try
         {
             await InitializeCoreAsync(cancellationToken);
+            initializationState.MarkSucceeded();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            initializationState.MarkFailed();
             throw;
         }
         catch (Exception exception)
         {
+            initializationState.MarkFailed();
             if (logger.IsEnabled(LogLevel.Critical))
             {
                 LogInitializationFailure(logger, exception.HResult);
@@ -42,12 +47,12 @@ public sealed partial class PersistenceInitializer(
         await context.Database.ExecuteSqlRawAsync("PRAGMA journal_mode = WAL;", cancellationToken);
         await context.Database.ExecuteSqlRawAsync("PRAGMA synchronous = NORMAL;", cancellationToken);
 
-        IDataProtector protector = dataProtectionProvider.CreateProtector(
-            "TemperedTyrant.CreatorToolkit.StartupValidation.v1");
-        const string canary = "data-protection-startup-canary";
-        string protectedCanary = protector.Protect(canary);
+        if (context.Database.HasPendingModelChanges())
+        {
+            throw new InvalidOperationException("The persistence model is not current.");
+        }
 
-        if (!string.Equals(protector.Unprotect(protectedCanary), canary, StringComparison.Ordinal))
+        if (!dataProtectionValidator.IsUsable())
         {
             throw new InvalidOperationException("Data Protection key-ring validation failed.");
         }

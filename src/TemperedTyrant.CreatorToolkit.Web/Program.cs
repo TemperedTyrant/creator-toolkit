@@ -12,6 +12,7 @@ using TemperedTyrant.CreatorToolkit.Web.Commands;
 using TemperedTyrant.CreatorToolkit.Web.Configuration;
 using TemperedTyrant.CreatorToolkit.Web.Diagnostics;
 using TemperedTyrant.CreatorToolkit.Web.ErrorHandling;
+using TemperedTyrant.CreatorToolkit.Web.Health;
 using TemperedTyrant.CreatorToolkit.Web.Hosting;
 using TemperedTyrant.CreatorToolkit.Web.RateLimiting;
 using TemperedTyrant.CreatorToolkit.Web.Security;
@@ -55,6 +56,8 @@ builder.Services.AddSingleton<IHostedService>(
     provider => provider.GetRequiredService<ApplicationHostLockLifetime>());
 builder.Services.AddSingleton<ApplicationLifecycleCoordinator>();
 builder.Services.AddSingleton(ApplicationLifecycleOptions.Default);
+builder.Services.AddSingleton(HealthReadinessOptions.Default);
+builder.Services.AddSingleton<ApplicationReadinessService>();
 builder.Services.AddHostedService<ApplicationLifecycleHostedService>();
 builder.Services.Configure<HostOptions>(
     options => options.ShutdownTimeout = TimeSpan.FromSeconds(15));
@@ -185,8 +188,10 @@ app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseMiddleware<UnexpectedFailureMiddleware>();
 app.UseMiddleware<SafeStatusCodeMiddleware>();
 app.UseRateLimiter();
+app.UseMiddleware<AnonymousHealthEndpointMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapCreatorToolkitHealthEndpoints();
 app.MapRazorPages();
 
 await app.RunAsync();

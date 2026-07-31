@@ -184,12 +184,26 @@ warning, and tested recovery path. Downgrades are not assumed safe.
 
 ## Health and operations
 
-The future container will expose separate liveness and readiness checks without
-credentials or sensitive detail:
+The application exposes separate anonymous checks without credentials or
+sensitive detail:
 
-- liveness confirms the process can respond;
-- readiness confirms initialization, database access, migration compatibility,
-  and job-runner readiness.
+- `GET /health/live` returns HTTP 200 with `{"status":"live"}` when the current
+  process can answer HTTP. It does not inspect persistence, migrations, Data
+  Protection, installation state, or external services.
+- `GET /health/ready` returns HTTP 200 with `{"status":"ready"}` only after
+  validated configuration and persistence startup, while SQLite, migrations,
+  the EF model, Data Protection, and the Running lifecycle remain usable. It
+  returns HTTP 503 with `{"status":"not_ready"}` otherwise.
+
+Both responses are fixed `application/json`, use `Cache-Control: no-store`, and
+are protected by the dedicated minimal health security-header profile. A valid
+first-run installation with no Owner is ready because onboarding state is not
+infrastructure readiness. Readiness polling has a two-second overall bound,
+uses shorter database-operation, command, and Data Protection bounds, coalesces
+concurrent work, performs no migration or data mutation, and does not persist
+diagnostics for expected failures. Each caller rechecks lifecycle and shutdown
+after shared probe work before returning ready. Unsupported methods return 405
+without running probes or entering authentication.
 
 Provider connection health belongs in the authenticated interface, not the
 unauthenticated container health response.
@@ -204,7 +218,7 @@ tracks a fixed in-memory application lifecycle and applies a bounded graceful
 shutdown. The long-running web-host lock remains held for the process lifetime,
 and completed host shutdown includes disposal of that lock lease. Bootstrap and
 recovery commands continue to use their independent short administrative
-coordination paths. Health and readiness endpoints are not yet implemented.
+coordination paths. No container healthcheck command is implemented yet.
 
 Logs go to stdout/stderr as structured records for Compose collection. Log
 rotation is the container runtime's responsibility. Tokens, credentials,

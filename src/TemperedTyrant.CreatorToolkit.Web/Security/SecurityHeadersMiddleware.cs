@@ -14,6 +14,9 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
         "default-src 'none'; script-src 'self'; object-src 'none'; base-uri 'none'; "
         + "frame-ancestors 'none'; form-action 'self'";
 
+    internal const string HealthContentSecurityPolicy =
+        "default-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+
     public Task InvokeAsync(HttpContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -43,9 +46,15 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
             .GetEndpoint()?
             .Metadata
             .GetMetadata<CapabilitySecurityHeaderProfileAttribute>() is not null;
+        bool isHealthEndpoint = context
+            .GetEndpoint()?
+            .Metadata
+            .GetMetadata<HealthSecurityHeaderProfileAttribute>() is not null;
 
         context.Response.Headers.ContentSecurityPolicy =
-            isSetupEndpoint || isCapabilityEndpoint
+            isHealthEndpoint
+                ? HealthContentSecurityPolicy
+                : isSetupEndpoint || isCapabilityEndpoint
                 ? SetupContentSecurityPolicy
                 : isSensitiveEndpoint
                 ? SensitiveContentSecurityPolicy
@@ -55,7 +64,10 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
         context.Response.Headers["Permissions-Policy"] =
             "camera=(), microphone=(), geolocation=()";
 
-        if (isSensitiveEndpoint || isSetupEndpoint || isCapabilityEndpoint)
+        if (isSensitiveEndpoint
+            || isSetupEndpoint
+            || isCapabilityEndpoint
+            || isHealthEndpoint)
         {
             context.Response.Headers.CacheControl = "no-store";
             context.Response.Headers.Pragma = "no-cache";
