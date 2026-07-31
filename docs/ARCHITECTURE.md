@@ -304,7 +304,20 @@ leaves the in-memory state Failed rather than Running. Late completion cannot
 leave that terminal failure state or re-enable work, and late task faults are
 observed. The state is not persisted and does not implement jobs, scheduling,
 polling, retries, leases, or provider work. Health and readiness endpoints
-remain deferred.
+are anonymous HTTP entry points layered over this fixed state. Liveness writes a
+constant response without resolving infrastructure probes. Readiness requires
+Running state with no stopping signal, a completed successful persistence
+startup, a fixed read-only SQLite probe, current migration metadata and EF
+model, and a bounded Data Protection canary round trip. Concurrent requests
+share at most one in-flight readiness operation, and each operation has a
+two-second overall bound. Database work has a 1.5-second linked operation bound
+and one-second command timeout; Data Protection validation has an independent
+one-second bound and retains at most one underlying validation until it is
+observed complete. Every caller checks Running state and the host stopping
+signal before joining shared work and again after its await, immediately before
+reporting success. Owner and installation-onboarding state are excluded.
+Expected not-ready results are fixed HTTP 503 responses and bypass diagnostic
+persistence.
 
 ## Announcement and approval state
 

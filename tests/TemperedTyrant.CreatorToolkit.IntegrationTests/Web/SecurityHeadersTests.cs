@@ -57,4 +57,26 @@ public sealed class SecurityHeadersTests
             applicationContext.Response.Headers.ContentSecurityPolicy);
         Assert.False(applicationContext.Response.Headers.ContainsKey("Cache-Control"));
     }
+
+    [Fact]
+    public async Task HealthProfileIsMinimalAndNeverCacheable()
+    {
+        SecurityHeadersMiddleware middleware = new(_ => Task.CompletedTask);
+        DefaultHttpContext context = new();
+        context.SetEndpoint(
+            new Endpoint(
+                _ => Task.CompletedTask,
+                new EndpointMetadataCollection(
+                    new HealthSecurityHeaderProfileAttribute()),
+                "health"));
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(
+            "default-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+            context.Response.Headers.ContentSecurityPolicy);
+        Assert.Equal("no-store", context.Response.Headers.CacheControl);
+        Assert.Equal("no-cache", context.Response.Headers.Pragma);
+        Assert.False(context.Response.Headers.ContainsKey("Set-Cookie"));
+    }
 }

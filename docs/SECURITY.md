@@ -255,6 +255,15 @@ cancellation or failure. It never attaches exception objects or accepts paths,
 configuration, connection details, or user-controlled fields. Debug exposes
 only the fixed in-memory lifecycle enum through its existing allowlist.
 
+Anonymous health endpoints expose only a fixed `status` field. They never
+return component names, errors, paths, database or migration identifiers,
+configuration, lifecycle internals, key information, or diagnostic references.
+They are explicitly anonymous, do not redirect to Login, do not issue cookies
+or antiforgery tokens, use `Cache-Control: no-store`, and select a dedicated
+minimal Content Security Policy. Readiness failures are expected operational
+outcomes: they return fixed HTTP 503 JSON without logging probe details or
+creating persisted diagnostics.
+
 ## Normal errors, Debug, and exports
 
 Normal pages show a safe status, short explanation, recommended action, and

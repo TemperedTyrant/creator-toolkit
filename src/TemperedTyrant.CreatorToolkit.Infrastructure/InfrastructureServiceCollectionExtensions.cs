@@ -10,6 +10,7 @@ using TemperedTyrant.CreatorToolkit.Core.Diagnostics;
 using TemperedTyrant.CreatorToolkit.Core.Security;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Audit;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Diagnostics;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Health;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
 using TemperedTyrant.CreatorToolkit.Infrastructure.ProcessCoordination;
@@ -100,7 +101,10 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<MigrationLock>();
         services.AddSingleton<SecurityOperationCoordinator>();
         services.AddSingleton<MigrationCoordinator>();
+        services.AddSingleton<PersistenceInitializationState>();
+        services.AddSingleton<IDataProtectionValidator, DataProtectionValidator>();
         services.AddSingleton<PersistenceInitializer>();
+        services.AddSingleton<IInfrastructureReadinessProbe, InfrastructureReadinessProbe>();
         services.AddScoped<IAuditWriter, TransactionalAuditWriter>();
         services.AddSingleton<
             IDiagnosticReferenceGenerator,
