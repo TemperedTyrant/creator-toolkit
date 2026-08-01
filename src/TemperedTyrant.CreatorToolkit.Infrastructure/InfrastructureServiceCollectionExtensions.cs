@@ -118,6 +118,7 @@ public static class InfrastructureServiceCollectionExtensions
                     client.DefaultRequestHeaders.UserAgent.ParseAdd(
                         "DiscordBot (https://github.com/TemperedTyrant/creator-toolkit, 0.1)");
                 })
+            .RemoveAllLoggers()
             .ConfigurePrimaryHttpMessageHandler(
                 () => new SocketsHttpHandler
                 {

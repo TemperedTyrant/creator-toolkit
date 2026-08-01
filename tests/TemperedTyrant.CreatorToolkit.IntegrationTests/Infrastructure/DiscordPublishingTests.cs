@@ -2,6 +2,8 @@ using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Http;
+using Microsoft.Extensions.Options;
 using TemperedTyrant.CreatorToolkit.Core.Announcements;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Discord;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
@@ -18,6 +20,27 @@ public sealed class DiscordPublishingTests
     private const string ApplicationId = "300000000000000003";
     private const string ChannelOne = "300000000000000004";
     private const string ChannelTwo = "300000000000000005";
+
+    [Fact]
+    public void DiscordHttpClientSuppressesDefaultUriLogging()
+    {
+        using TestDataDirectory data = new();
+        using ServiceProvider provider = TestServices.Create(data.Path);
+
+        HttpClientFactoryOptions options = provider
+            .GetRequiredService<IOptionsMonitor<HttpClientFactoryOptions>>()
+            .Get(nameof(DiscordHttpApi));
+
+        bool suppressDefaultLogging = Assert.IsType<bool>(
+            typeof(HttpClientFactoryOptions)
+                .GetProperty(
+                    "SuppressDefaultLogging",
+                    System.Reflection.BindingFlags.Instance
+                        | System.Reflection.BindingFlags.Public
+                        | System.Reflection.BindingFlags.NonPublic)!
+                .GetValue(options));
+        Assert.True(suppressDefaultLogging);
+    }
 
     [Fact]
     public async Task OneChannelFailureDoesNotBlockLaterSuccessAndDuplicateUsesStableNonces()
@@ -56,11 +79,21 @@ public sealed class DiscordPublishingTests
         }
 
         Guid submissionId = Guid.NewGuid();
+        byte[] imageBytes = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00];
+        DiscordValidatedImage image = DiscordImageValidation.Validate(
+            imageBytes,
+            "synthetic.png",
+            "image/png",
+            "Synthetic image",
+            false,
+            false,
+            submissionId);
         DiscordPublishRequest request = CreateRequest(
             submissionId,
             announcementId,
             connectionId,
-            destinations);
+            destinations,
+            image);
         api.Results.Enqueue(new DiscordApiSendResult(DiscordDeliveryStatus.MissingPermission));
         api.Results.Enqueue(new DiscordApiSendResult(DiscordDeliveryStatus.Success, "300000000000000099"));
         await using (AsyncServiceScope publishScope = provider.CreateAsyncScope())
@@ -74,6 +107,9 @@ public sealed class DiscordPublishingTests
         }
 
         Assert.Equal(2, api.Messages.Count);
+        Assert.Equal(2, api.Images.Count);
+        Assert.All(api.Images, sent => Assert.Equal(imageBytes, sent));
+        Assert.NotSame(api.Images[0], api.Images[1]);
         Assert.NotEqual(api.Messages[0].Nonce, api.Messages[1].Nonce);
         string[] firstNonces = api.Messages.Select(value => value.Nonce).ToArray();
 
@@ -338,7 +374,8 @@ public sealed class DiscordPublishingTests
         Guid submissionId,
         Guid announcementId,
         Guid connectionId,
-        IReadOnlyList<DiscordDestinationListItem> destinations) =>
+        IReadOnlyList<DiscordDestinationListItem> destinations,
+        DiscordValidatedImage? image = null) =>
         new(
             submissionId,
             announcementId,
@@ -353,7 +390,7 @@ public sealed class DiscordPublishingTests
             DiscordMentionSelection.None,
             false,
             null,
-            null);
+            image);
 
     private static ServiceProvider CreateProvider(
         string dataPath,
@@ -377,6 +414,8 @@ public sealed class DiscordPublishingTests
         internal Queue<DiscordApiSendResult> Results { get; } = new();
 
         internal List<DiscordMessageRequest> Messages { get; } = [];
+
+        internal List<byte[]> Images { get; } = [];
 
         internal bool BlockDiscovery { get; set; }
 
@@ -437,6 +476,11 @@ public sealed class DiscordPublishingTests
         public async Task<DiscordApiSendResult> SendMessageAsync(string token, string channelId, DiscordMessageRequest request, DiscordValidatedImage? image, CancellationToken cancellationToken)
         {
             Messages.Add(request);
+            if (image is not null)
+            {
+                Images.Add(image.Bytes.ToArray());
+            }
+
             if (BlockSend)
             {
                 await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);

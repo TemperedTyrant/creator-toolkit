@@ -10,6 +10,10 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
         "default-src 'none'; style-src 'self'; object-src 'none'; base-uri 'none'; "
         + "frame-ancestors 'none'; form-action 'self'";
 
+    internal const string SensitiveScriptContentSecurityPolicy =
+        "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; "
+        + "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
+
     internal const string SetupContentSecurityPolicy =
         "default-src 'none'; script-src 'self'; object-src 'none'; base-uri 'none'; "
         + "frame-ancestors 'none'; form-action 'self'";
@@ -42,6 +46,10 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
             .GetEndpoint()?
             .Metadata
             .GetMetadata<SetupSecurityHeaderProfileAttribute>() is not null;
+        bool isSensitiveScriptEndpoint = context
+            .GetEndpoint()?
+            .Metadata
+            .GetMetadata<SensitiveScriptSecurityHeaderProfileAttribute>() is not null;
         bool isCapabilityEndpoint = context
             .GetEndpoint()?
             .Metadata
@@ -56,6 +64,8 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
                 ? HealthContentSecurityPolicy
                 : isSetupEndpoint || isCapabilityEndpoint
                 ? SetupContentSecurityPolicy
+                : isSensitiveScriptEndpoint
+                ? SensitiveScriptContentSecurityPolicy
                 : isSensitiveEndpoint
                 ? SensitiveContentSecurityPolicy
                 : ApplicationContentSecurityPolicy;
@@ -65,6 +75,7 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
             "camera=(), microphone=(), geolocation=()";
 
         if (isSensitiveEndpoint
+            || isSensitiveScriptEndpoint
             || isSetupEndpoint
             || isCapabilityEndpoint
             || isHealthEndpoint)

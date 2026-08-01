@@ -107,10 +107,12 @@ public sealed partial class AnnouncementBrowserTests
         await page.Locator("#EmbedMessageText").FillAsync("**Foreground browser send**");
         await page.Locator("#EmbedTitle").FillAsync("Discord-specific title");
         await page.Locator("#EmbedDescription").FillAsync("Role and member selected explicitly.");
+        await page.Locator("#EmbedTitleUrl").FillAsync("https://example.invalid/title");
+        await page.Locator("#EmbedColor").FillAsync("#74c7a5");
+        await page.Locator("#EmbedFooter").FillAsync("Synthetic footer");
+        await page.Locator("#EmbedThumbnailUrl").FillAsync("https://example.invalid/thumbnail.png");
+        await page.Locator("#RemoteImageUrl").FillAsync("https://example.invalid/preserved-only.png");
         await page.Locator($"input[name='RoleIds'][value='{DiscordBrowserRoleId}']").CheckAsync();
-        await page.Locator("#MemberQuery").FillAsync("member");
-        await page.GetByRole(AriaRole.Button, new() { Name = "Search up to 25 members" }).ClickAsync();
-        await page.Locator($"input[name='UserIds'][value='{DiscordBrowserMemberId}']").CheckAsync();
         await page.Locator("#ImageAltText").FillAsync("Synthetic image");
         await page.Locator("#ImageSpoiler").CheckAsync();
         await page.Locator("#ImageInEmbed").CheckAsync();
@@ -121,28 +123,68 @@ public sealed partial class AnnouncementBrowserTests
             Buffer = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00],
         };
         await page.Locator("#UploadedImage").SetInputFilesAsync(image);
+        string composerUrl = page.Url;
+        string announcementRevision = await page.Locator("#AnnouncementRevision").InputValueAsync();
+        string submissionId = await page.Locator("#SubmissionId").InputValueAsync();
+        await page.Locator("#MemberQuery").FillAsync("older");
+        await page.GetByRole(AriaRole.Button, new() { Name = "Search up to 25 members" }).ClickAsync();
+        await adapter.OlderSearchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await page.Locator("#MemberQuery").FillAsync("newer");
+        Task<IResponse> newerSearchResponse = page.WaitForResponseAsync(
+            response => response.Request.Method == "POST"
+                && response.Url.Contains("handler=SearchMembers", StringComparison.Ordinal)
+                && response.Ok);
+        await page.GetByRole(AriaRole.Button, new() { Name = "Search up to 25 members" }).ClickAsync();
+        await newerSearchResponse;
+        adapter.OlderSearchCompletion.TrySetResult(
+            [new DiscordGuildMember("500000000000000010", "Older result", [])]);
+        Assert.True(await page.GetByText("Newer result", new() { Exact = false }).IsVisibleAsync());
+        Assert.Equal(0, await page.GetByText("Older result", new() { Exact = false }).CountAsync());
+        await page.Locator("#MemberQuery").FillAsync("member");
+        Task<IResponse> memberSearchResponse = page.WaitForResponseAsync(
+            response => response.Request.Method == "POST"
+                && response.Url.Contains("handler=SearchMembers", StringComparison.Ordinal));
+        await page.GetByRole(AriaRole.Button, new() { Name = "Search up to 25 members" }).ClickAsync();
+        Assert.True((await memberSearchResponse).Ok);
+        Assert.Equal(composerUrl, page.Url);
+        Assert.Equal("**Foreground browser send**", await page.Locator("#EmbedMessageText").InputValueAsync());
+        Assert.Equal("Discord-specific title", await page.Locator("#EmbedTitle").InputValueAsync());
+        Assert.Equal("Role and member selected explicitly.", await page.Locator("#EmbedDescription").InputValueAsync());
+        Assert.Equal("https://example.invalid/title", await page.Locator("#EmbedTitleUrl").InputValueAsync());
+        Assert.Equal("#74c7a5", await page.Locator("#EmbedColor").InputValueAsync());
+        Assert.Equal("Synthetic footer", await page.Locator("#EmbedFooter").InputValueAsync());
+        Assert.Equal("https://example.invalid/thumbnail.png", await page.Locator("#EmbedThumbnailUrl").InputValueAsync());
+        Assert.Equal("https://example.invalid/preserved-only.png", await page.Locator("#RemoteImageUrl").InputValueAsync());
+        Assert.Equal(announcementRevision, await page.Locator("#AnnouncementRevision").InputValueAsync());
+        Assert.Equal(submissionId, await page.Locator("#SubmissionId").InputValueAsync());
+        Assert.True(await page.Locator("input[name='Mode'][value='Embed']").IsCheckedAsync());
+        Assert.True(await page.Locator("input[name='DestinationIds']").First.IsCheckedAsync());
+        Assert.True(await page.Locator($"input[name='RoleIds'][value='{DiscordBrowserRoleId}']").IsCheckedAsync());
+        Assert.True(await page.Locator("#ImageSpoiler").IsCheckedAsync());
+        Assert.True(await page.Locator("#ImageInEmbed").IsCheckedAsync());
+        Assert.Equal(1, await page.Locator("#UploadedImage").EvaluateAsync<int>("input => input.files.length"));
+        await page.Locator($"input[data-member-id='{DiscordBrowserMemberId}']").CheckAsync();
+        Assert.Equal(
+            1,
+            await page.Locator($"input[type='hidden'][name='UserIds'][value='{DiscordBrowserMemberId}']").CountAsync());
+        await page.Locator("#RemoteImageUrl").FillAsync(string.Empty);
         await page.GetByRole(AriaRole.Button, new() { Name = "Review publication", Exact = true }).ClickAsync();
         Assert.True(
             await page.GetByRole(AriaRole.Heading, new() { Name = "4. Confirmation" }).IsVisibleAsync(),
             page.Url + ": " + string.Join(
                 " | ",
                 await page.Locator("[role='alert'], .field-validation-error").AllTextContentsAsync()));
-        await page.Locator("#UploadedImage").SetInputFilesAsync(image);
-        await page.Locator("#FinalConfirmation").CheckAsync();
-        await page.Locator("#EmbedDescription").FillAsync("Changed after the review step.");
-        await page.GetByRole(AriaRole.Button, new() { Name = "Publish to Discord" }).ClickAsync();
-        Assert.True(await page.GetByText("The reviewed publication changed or expired.", new() { Exact = false }).IsVisibleAsync());
-        Assert.Empty(adapter.Sent);
-        await page.Locator("#UploadedImage").SetInputFilesAsync(image);
-        await page.GetByRole(AriaRole.Button, new() { Name = "Review publication", Exact = true }).ClickAsync();
-        await page.Locator("#UploadedImage").SetInputFilesAsync(image);
+        Assert.True(await page.GetByText("Validated PNG image", new() { Exact = false }).IsVisibleAsync());
+        Assert.Equal(0, await page.Locator("#UploadedImage").EvaluateAsync<int>("input => input.files.length"));
         await page.Locator("#FinalConfirmation").CheckAsync();
         await Task.WhenAll(
             page.WaitForURLAsync("**/DiscordResult/**"),
             page.GetByRole(AriaRole.Button, new() { Name = "Publish to Discord" }).ClickAsync());
         Assert.True(await page.GetByText("Success", new() { Exact = true }).IsVisibleAsync());
         Assert.Single(adapter.Sent);
-        Assert.True(adapter.Sent[0].Image?.Spoiler);
+        Assert.True(adapter.Sent[0].Spoiler);
+        Assert.True(adapter.Sent[0].EmbedPlacement);
+        Assert.Equal(image.Buffer, adapter.Sent[0].ImageBytes);
         Assert.Contains(DiscordBrowserRoleId, adapter.Sent[0].Request.AllowedMentions.Roles!);
         Assert.Contains(DiscordBrowserMemberId, adapter.Sent[0].Request.AllowedMentions.Users!);
 
@@ -194,6 +236,7 @@ public sealed partial class AnnouncementBrowserTests
             builder.Services.AddSingleton(adapter);
             builder.Services.AddRazorPages();
             builder.Services.AddSingleton<DiscordPublicationResultStore>();
+            builder.Services.AddSingleton<DiscordEphemeralUploadStore>();
             builder.Services
                 .AddAuthentication(
                     options =>
@@ -246,7 +289,13 @@ public sealed partial class AnnouncementBrowserTests
 
     private sealed class BrowserDiscordApi : IDiscordApi
     {
-        internal List<(DiscordMessageRequest Request, DiscordValidatedImage? Image)> Sent { get; } = [];
+        internal List<SentDiscordMessage> Sent { get; } = [];
+
+        internal TaskCompletionSource<bool> OlderSearchStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal TaskCompletionSource<IReadOnlyList<DiscordGuildMember>> OlderSearchCompletion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         internal Guid ConnectionId { get; set; }
 
@@ -269,8 +318,18 @@ public sealed partial class AnnouncementBrowserTests
                 ],
                 new DiscordGuildMember(identity.BotUserId, "Creator Toolkit bot", [])));
 
-        public Task<IReadOnlyList<DiscordGuildMember>> SearchMembersAsync(string token, string guildId, string query, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<DiscordGuildMember>>([new DiscordGuildMember(DiscordBrowserMemberId, "Member", [])]);
+        public async Task<IReadOnlyList<DiscordGuildMember>> SearchMembersAsync(string token, string guildId, string query, CancellationToken cancellationToken)
+        {
+            if (query == "older")
+            {
+                OlderSearchStarted.TrySetResult(true);
+                return await OlderSearchCompletion.Task.WaitAsync(cancellationToken);
+            }
+
+            return query == "newer"
+                ? [new DiscordGuildMember("500000000000000011", "Newer result", [])]
+                : [new DiscordGuildMember(DiscordBrowserMemberId, "Member", [])];
+        }
 
         public Task<DiscordGuildMember?> GetMemberAsync(string token, string guildId, string userId, CancellationToken cancellationToken) =>
             Task.FromResult<DiscordGuildMember?>(userId == DiscordBrowserMemberId
@@ -279,8 +338,18 @@ public sealed partial class AnnouncementBrowserTests
 
         public Task<DiscordApiSendResult> SendMessageAsync(string token, string channelId, DiscordMessageRequest request, DiscordValidatedImage? image, CancellationToken cancellationToken)
         {
-            Sent.Add((request, image));
+            Sent.Add(new SentDiscordMessage(
+                request,
+                image?.Bytes.ToArray(),
+                image?.Spoiler ?? false,
+                image?.EmbedPlacement ?? false));
             return Task.FromResult(new DiscordApiSendResult(DiscordDeliveryStatus.Success, "500000000000000099"));
         }
+
+        internal sealed record SentDiscordMessage(
+            DiscordMessageRequest Request,
+            byte[]? ImageBytes,
+            bool Spoiler,
+            bool EmbedPlacement);
     }
 }

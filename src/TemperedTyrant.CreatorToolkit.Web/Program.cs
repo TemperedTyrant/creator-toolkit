@@ -68,6 +68,7 @@ builder.Services.ConfigureApplicationCookie(
 builder.Services.AddScoped<CreatorToolkitCookieEvents>();
 builder.Services.AddScoped<DebugStatusService>();
 builder.Services.AddSingleton<DiscordPublicationResultStore>();
+builder.Services.AddSingleton<DiscordEphemeralUploadStore>();
 builder.Services.AddSingleton<ApplicationHostLockLifetime>();
 builder.Services.AddSingleton<IHostedService>(
     provider => provider.GetRequiredService<ApplicationHostLockLifetime>());

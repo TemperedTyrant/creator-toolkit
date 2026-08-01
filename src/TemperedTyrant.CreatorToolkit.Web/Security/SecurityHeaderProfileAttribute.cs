@@ -4,6 +4,9 @@ namespace TemperedTyrant.CreatorToolkit.Web.Security;
 public sealed class SensitiveSecurityHeaderProfileAttribute : Attribute;
 
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
+public sealed class SensitiveScriptSecurityHeaderProfileAttribute : Attribute;
+
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
 public sealed class SetupSecurityHeaderProfileAttribute : Attribute;
 
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]

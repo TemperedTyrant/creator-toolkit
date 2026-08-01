@@ -14,12 +14,13 @@ using TemperedTyrant.CreatorToolkit.Web.Security;
 namespace TemperedTyrant.CreatorToolkit.Web.Pages.Announcements;
 
 [Authorize(Policy = AuthorizationPolicies.ContentEditing)]
-[SensitiveSecurityHeaderProfile]
+[SensitiveScriptSecurityHeaderProfile]
 [RequestSizeLimit(9 * 1024 * 1024)]
 public sealed class PublishDiscordModel(
     IDiscordPublishingService publishing,
     IDiscordConfigurationService configuration,
     DiscordPublicationResultStore resultStore,
+    DiscordEphemeralUploadStore uploadStore,
     IDataProtectionProvider dataProtectionProvider) : PageModel
 {
     private const string ReviewProtectionPurpose =
@@ -127,6 +128,14 @@ public sealed class PublishDiscordModel(
 
     public IReadOnlyList<DiscordGuildMember> MemberResults { get; private set; } = [];
 
+    public string? ReviewImageFormat { get; private set; }
+
+    public int? ReviewImageByteSize { get; private set; }
+
+    public string? ReviewImageSafeFileName { get; private set; }
+
+    public bool ReviewImageHasAltText { get; private set; }
+
     public bool CanUseMassMentions => User.IsInRole(SystemRoles.Owner) || User.IsInRole(SystemRoles.Admin);
 
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
@@ -146,6 +155,11 @@ public sealed class PublishDiscordModel(
 
     public async Task<IActionResult> OnPostSearchMembersAsync(CancellationToken cancellationToken)
     {
+        if (Request.Headers["X-Creator-Toolkit-Partial"] == "member-search")
+        {
+            return await SearchMembersPartialAsync(cancellationToken);
+        }
+
         ReviewComplete = false;
         ReviewToken = null;
         FinalConfirmation = false;
@@ -165,7 +179,11 @@ public sealed class PublishDiscordModel(
                 MemberQuery ?? string.Empty,
                 cancellationToken);
         }
-        catch (Exception exception) when (exception is ArgumentException or DiscordApiAuthenticationException or DiscordApiUnavailableException)
+        catch (Exception exception) when (
+            exception is ArgumentException
+                or DiscordApiAuthenticationException
+                or DiscordApiUnavailableException
+                or DiscordServerInformationException)
         {
             ModelState.AddModelError(nameof(MemberQuery), "Member search is unavailable. Use a Discord user ID instead.");
         }
@@ -202,19 +220,72 @@ public sealed class PublishDiscordModel(
         }
 
         DiscordValidatedImage? image = null;
+        ReviewState? previousReview = ReadReviewState();
+        if (!string.IsNullOrEmpty(ReviewToken) && previousReview is null)
+        {
+            uploadStore.RemoveForSubmission(actor.Value, SubmissionId);
+        }
         try
         {
             image = await ReadImageAsync(cancellationToken);
         }
-        catch (DiscordPublicationValidationException exception)
+        catch (Exception exception) when (
+            exception is DiscordPublicationValidationException or DiscordMessageValidationException)
         {
             ModelState.AddModelError(string.Empty, exception.Message);
         }
 
+        DiscordStagedUpload? stagedUpload = null;
+        bool imageWasStaged = false;
+        DiscordEphemeralUploadBinding binding = UploadBinding(actor.Value);
+        try
+        {
+            if (ModelState.IsValid)
+            {
+                if (image is not null)
+                {
+                    uploadStore.RemoveForSubmission(actor.Value, SubmissionId);
+                    stagedUpload = uploadStore.Stage(binding, image);
+                    imageWasStaged = true;
+                }
+                else if (previousReview?.UploadHandle is not null)
+                {
+                    stagedUpload = uploadStore.GetMetadata(previousReview.UploadHandle, binding);
+                    if (stagedUpload is null)
+                    {
+                        ModelState.AddModelError(
+                            string.Empty,
+                            "The selected image has expired. Return to the composer and select it again.");
+                    }
+                }
+            }
+        }
+        catch (DiscordEphemeralUploadCapacityException)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                "Image review capacity is temporarily unavailable. Try again shortly.");
+        }
+        finally
+        {
+            if (image is not null && !imageWasStaged)
+            {
+                CryptographicOperations.ZeroMemory(image.Bytes);
+            }
+        }
+
         ReviewComplete = ModelState.IsValid;
-        ReviewToken = ReviewComplete
-            ? CreateReviewToken(actor.Value, image)
-            : null;
+        if (ReviewComplete)
+        {
+            SetReviewImage(stagedUpload);
+            ReviewToken = CreateReviewToken(actor.Value, stagedUpload);
+        }
+        else
+        {
+            uploadStore.RemoveForSubmission(actor.Value, SubmissionId);
+            ReviewToken = null;
+        }
+
         FinalConfirmation = false;
         ModelState.Remove(nameof(ReviewComplete));
         ModelState.Remove(nameof(ReviewToken));
@@ -237,9 +308,11 @@ public sealed class PublishDiscordModel(
 
         if (!await LoadAsync(cancellationToken))
         {
+            uploadStore.RemoveForSubmission(actor.Value, SubmissionId);
             return NotFound();
         }
 
+        DiscordEphemeralUploadLease? uploadLease = null;
         try
         {
             List<string> users = UserIds.ToList();
@@ -260,11 +333,18 @@ public sealed class PublishDiscordModel(
                 }
             }
 
-            DiscordValidatedImage? image = await ReadImageAsync(cancellationToken);
-            if (!ReviewMatches(actor.Value, image))
+            ReviewState? review = ReadReviewState();
+            if (review?.UploadHandle is not null)
+            {
+                SetReviewImage(uploadStore.GetMetadata(
+                    review.UploadHandle,
+                    UploadBinding(actor.Value)));
+            }
+            if (UploadedImage is not null || !ReviewMatches(actor.Value, review))
             {
                 ReviewComplete = false;
                 ReviewToken = null;
+                uploadStore.RemoveForSubmission(actor.Value, SubmissionId);
                 ModelState.Remove(nameof(ReviewComplete));
                 ModelState.Remove(nameof(ReviewToken));
                 ModelState.AddModelError(
@@ -275,6 +355,24 @@ public sealed class PublishDiscordModel(
             if (!ModelState.IsValid)
             {
                 return Page();
+            }
+
+            if (review!.UploadHandle is not null)
+            {
+                uploadLease = uploadStore.Consume(
+                    review.UploadHandle,
+                    UploadBinding(actor.Value));
+                if (uploadLease is null)
+                {
+                    ReviewComplete = false;
+                    ReviewToken = null;
+                    ModelState.Remove(nameof(ReviewComplete));
+                    ModelState.Remove(nameof(ReviewToken));
+                    ModelState.AddModelError(
+                        string.Empty,
+                        "The selected image has expired. Return to the composer and select it again.");
+                    return Page();
+                }
             }
 
             DiscordPublishRequest request = new(
@@ -299,7 +397,7 @@ public sealed class PublishDiscordModel(
                 new DiscordMentionSelection(MentionEveryone, MentionHere, RoleIds, users),
                 MassMentionConfirmed,
                 RemoteImageUrl,
-                image);
+                uploadLease?.Image);
             DiscordPublicationResult result = await publishing.PublishAsync(
                 request,
                 CanUseMassMentions,
@@ -312,13 +410,95 @@ public sealed class PublishDiscordModel(
         }
         catch (DiscordPublicationValidationException exception)
         {
+            if (uploadLease is not null)
+            {
+                ReviewComplete = false;
+                ReviewToken = null;
+            }
+
             ModelState.AddModelError(string.Empty, exception.Message);
             return Page();
         }
         catch (Exception exception) when (exception is DiscordApiAuthenticationException or DiscordApiUnavailableException)
         {
+            if (uploadLease is not null)
+            {
+                ReviewComplete = false;
+                ReviewToken = null;
+            }
+
             ModelState.AddModelError(string.Empty, "Discord is unavailable. No message content or credentials were exposed.");
             return Page();
+        }
+        finally
+        {
+            uploadLease?.Dispose();
+        }
+    }
+
+    private async Task<IActionResult> SearchMembersPartialAsync(CancellationToken cancellationToken)
+    {
+        Context = await publishing.GetContextAsync(Id, cancellationToken);
+        bool selectionIsValid = Context is not null
+            && Context.Connections.Any(value => value.Id == ConnectionId && value.Enabled)
+            && Context.Destinations.Any(value =>
+                value.ConnectionId == ConnectionId
+                && value.GuildId == GuildId
+                && value.Enabled);
+        string normalized = (MemberQuery ?? string.Empty).Trim();
+        if (!selectionIsValid
+            || normalized.EnumerateRunes().Count() is < 2 or > 100)
+        {
+            return new JsonResult(new
+            {
+                status = "invalid",
+                message = "Enter between 2 and 100 characters and select a configured Discord server.",
+                members = Array.Empty<object>(),
+            })
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+            };
+        }
+
+        try
+        {
+            IReadOnlyList<DiscordGuildMember> members = await publishing.SearchMembersAsync(
+                ConnectionId,
+                GuildId,
+                normalized,
+                cancellationToken);
+            return new JsonResult(new
+            {
+                status = "ok",
+                message = members.Count == 0
+                    ? "No matching Discord members were found."
+                    : $"Found {members.Count} Discord member(s).",
+                members = members.Take(25).Select(value => new
+                {
+                    id = value.UserId,
+                    displayName = value.DisplayName,
+                }),
+            });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException
+                or DiscordApiAuthenticationException
+                or DiscordApiUnavailableException
+                or DiscordServerInformationException)
+        {
+            return new JsonResult(new
+            {
+                status = "unavailable",
+                message = "Member search is unavailable. Use a Discord user ID instead.",
+                members = Array.Empty<object>(),
+            })
+            {
+                StatusCode = StatusCodes.Status503ServiceUnavailable,
+            };
         }
     }
 
@@ -364,56 +544,77 @@ public sealed class PublishDiscordModel(
         await using Stream source = UploadedImage.OpenReadStream();
         using var memory = new MemoryStream();
         byte[] buffer = new byte[64 * 1024];
-        while (true)
+        byte[]? validatedBytes = null;
+        try
         {
-            int read = await source.ReadAsync(buffer, token);
-            if (read == 0)
+            while (true)
             {
-                break;
+                int read = await source.ReadAsync(buffer, token);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                if (memory.Length + read > DiscordImageValidation.MaximumBytes)
+                {
+                    throw new DiscordPublicationValidationException("The uploaded image must be no larger than 8 MiB.");
+                }
+
+                await memory.WriteAsync(buffer.AsMemory(0, read), token);
             }
 
-            if (memory.Length + read > DiscordImageValidation.MaximumBytes)
-            {
-                throw new DiscordPublicationValidationException("The uploaded image must be no larger than 8 MiB.");
-            }
-
-            await memory.WriteAsync(buffer.AsMemory(0, read), token);
+            validatedBytes = memory.ToArray();
+            DiscordValidatedImage image = DiscordImageValidation.Validate(
+                validatedBytes,
+                Path.GetFileName(UploadedImage.FileName),
+                UploadedImage.ContentType,
+                ImageAltText,
+                ImageSpoiler,
+                ImageInEmbed,
+                SubmissionId);
+            validatedBytes = null;
+            return image;
         }
+        finally
+        {
+            if (validatedBytes is not null)
+            {
+                CryptographicOperations.ZeroMemory(validatedBytes);
+            }
 
-        return DiscordImageValidation.Validate(
-            memory.ToArray(),
-            Path.GetFileName(UploadedImage.FileName),
-            UploadedImage.ContentType,
-            ImageAltText,
-            ImageSpoiler,
-            ImageInEmbed,
-            SubmissionId);
+            CryptographicOperations.ZeroMemory(buffer);
+            if (memory.TryGetBuffer(out ArraySegment<byte> memoryBuffer))
+            {
+                CryptographicOperations.ZeroMemory(memoryBuffer.AsSpan());
+            }
+        }
     }
 
-    private string CreateReviewToken(Guid actorUserId, DiscordValidatedImage? image)
+    private string CreateReviewToken(Guid actorUserId, DiscordStagedUpload? image)
     {
-        byte[] fingerprint = CreateReviewFingerprint(actorUserId, image);
+        byte[] fingerprint = CreateReviewFingerprint(actorUserId, image is not null);
+        string state = JsonSerializer.Serialize(new ReviewState(
+            Convert.ToBase64String(fingerprint),
+            image?.Handle));
         return dataProtectionProvider
             .CreateProtector(ReviewProtectionPurpose)
             .ToTimeLimitedDataProtector()
-            .Protect(Convert.ToBase64String(fingerprint), ReviewLifetime);
+            .Protect(state, ReviewLifetime);
     }
 
-    private bool ReviewMatches(Guid actorUserId, DiscordValidatedImage? image)
+    private bool ReviewMatches(Guid actorUserId, ReviewState? review)
     {
-        if (!ReviewComplete || string.IsNullOrEmpty(ReviewToken))
+        if (!ReviewComplete || review is null)
         {
             return false;
         }
 
         try
         {
-            string protectedFingerprint = dataProtectionProvider
-                .CreateProtector(ReviewProtectionPurpose)
-                .ToTimeLimitedDataProtector()
-                .Unprotect(ReviewToken);
-            byte[] expected = Convert.FromBase64String(protectedFingerprint);
-            byte[] actual = CreateReviewFingerprint(actorUserId, image);
+            byte[] expected = Convert.FromBase64String(review.Fingerprint);
+            byte[] actual = CreateReviewFingerprint(
+                actorUserId,
+                review.UploadHandle is not null);
             return CryptographicOperations.FixedTimeEquals(expected, actual);
         }
         catch (Exception exception) when (
@@ -423,11 +624,30 @@ public sealed class PublishDiscordModel(
         }
     }
 
-    private byte[] CreateReviewFingerprint(Guid actorUserId, DiscordValidatedImage? image)
+    private ReviewState? ReadReviewState()
     {
-        string? imageDigest = image is null
-            ? null
-            : Convert.ToBase64String(SHA256.HashData(image.Bytes));
+        if (string.IsNullOrEmpty(ReviewToken))
+        {
+            return null;
+        }
+
+        try
+        {
+            string state = dataProtectionProvider
+                .CreateProtector(ReviewProtectionPurpose)
+                .ToTimeLimitedDataProtector()
+                .Unprotect(ReviewToken);
+            return JsonSerializer.Deserialize<ReviewState>(state);
+        }
+        catch (Exception exception) when (
+            exception is CryptographicException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    private byte[] CreateReviewFingerprint(Guid actorUserId, bool hasUploadedImage)
+    {
         var reviewed = new
         {
             ActorUserId = actorUserId,
@@ -452,7 +672,7 @@ public sealed class PublishDiscordModel(
             ImageAltText,
             ImageSpoiler,
             ImageInEmbed,
-            ImageDigest = imageDigest,
+            HasUploadedImage = hasUploadedImage,
             MentionEveryone,
             MentionHere,
             RoleIds = RoleIds.Order(StringComparer.Ordinal).ToArray(),
@@ -462,4 +682,25 @@ public sealed class PublishDiscordModel(
         };
         return SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(reviewed));
     }
+
+    private DiscordEphemeralUploadBinding UploadBinding(Guid actorUserId) => new(
+        actorUserId,
+        Id,
+        AnnouncementRevision,
+        ConnectionId,
+        GuildId,
+        SubmissionId,
+        Mode,
+        ImageSpoiler,
+        ImageInEmbed);
+
+    private void SetReviewImage(DiscordStagedUpload? image)
+    {
+        ReviewImageFormat = image?.Format;
+        ReviewImageByteSize = image?.ByteSize;
+        ReviewImageSafeFileName = image?.SafeFileName;
+        ReviewImageHasAltText = image?.HasAltText ?? false;
+    }
+
+    private sealed record ReviewState(string Fingerprint, string? UploadHandle);
 }
