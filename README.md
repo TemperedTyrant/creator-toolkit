@@ -10,12 +10,13 @@ machine-readable identifier remains `creator-toolkit`.
 
 > [!WARNING]
 > TemperedTyrant Creator Toolkit is in pre-alpha development.
-> The milestone 1 foundation, announcement draft authoring, and foreground
-> Discord bot publishing are implemented, but no stable release is available.
+> The milestone 1 foundation, unified announcement authoring with encrypted
+> draft images, and durable Discord bot publishing are implemented, but no
+> stable release is available.
 
 Creator Announcements is the first module being implemented and released.
 Authorized users can now create, edit, archive, restore, search, and delete
-plain-text drafts; Viewer users have read-only access. Version 1 remains
+Markdown-backed drafts with persistent images; Viewer users have read-only access. Version 1 remains
 deliberately focused on reliable creator
 announcements; it is not a general-purpose creator suite or an enterprise
 social-media management, analytics, engagement, or advertising product.

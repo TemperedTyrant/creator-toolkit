@@ -57,14 +57,16 @@ server-side for all roles, secret-store tests prove encryption and
 non-retrievability, and application/database/container smoke tests pass.
 
 **Implemented:** the milestone 1 foundation is complete. The first product
-checkpoint also implements plain-text announcement draft creation, listing,
+checkpoint also implements Markdown-backed announcement draft creation, listing,
 details, editing, archive/restore, permanent deletion, search, filtering,
 pagination, revision-bound concurrency, role authorization, and transactional
 audit records. Drafts persist in SQLite across application restarts. Discord
 bot setup, channel discovery, permission-aware destination saving, and durable
 manual per-channel publishing are also implemented. SQLite leasing, restart
 recovery, bounded retries, cancellation, encrypted pending payloads, and
-content-free Publish History are implemented. Scheduling, approvals, creator
+content-free Publish History are implemented. The unified composer, encrypted
+persistent draft images, authenticated previews, and immutable media
+snapshotting are implemented. Scheduling, approvals, creator
 events, and other providers are not.
 
 ## 2. Core announcements, approvals, and durable publishing
@@ -97,8 +99,9 @@ one destination failure does not block another.
 **Implemented for Discord:** user-owned bot credential entry/replacement,
 least-privilege installation links, live server/channel/role/member discovery,
 effective channel-permission calculation, saved destinations, fixed test
-messages, safe mention controls, plain and rich-embed composition, request-only
-images, durable Create Message delivery, bounded retry handling, cancellation,
+messages, safe mention controls, unified plain/rich-embed presentation,
+persistent draft images, durable Create Message delivery, bounded retry
+handling, cancellation,
 and independent per-channel results. The bot transport uses outbound Discord HTTP
 API v10 only; no Gateway, incoming event, slash command, or public callback is
 present.

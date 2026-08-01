@@ -211,7 +211,7 @@ public sealed class DiscordPersistenceTests
         public Task<DiscordGuildMember?> GetMemberAsync(string token, string guildId, string userId, CancellationToken cancellationToken) =>
             Task.FromResult<DiscordGuildMember?>(null);
 
-        public Task<DiscordApiSendResult> SendMessageAsync(string token, string channelId, DiscordMessageRequest request, DiscordValidatedImage? image, CancellationToken cancellationToken) =>
+        public Task<DiscordApiSendResult> SendMessageAsync(string token, string channelId, DiscordMessageRequest request, IReadOnlyList<DiscordValidatedImage> images, CancellationToken cancellationToken) =>
             Task.FromResult(new DiscordApiSendResult(DiscordDeliveryStatus.Success, "200000000000000099"));
     }
 }

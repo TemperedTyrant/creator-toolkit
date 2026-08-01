@@ -386,9 +386,12 @@ internal sealed class PublicationProcessor(
         }
         finally
         {
-            if (request?.UploadedImage is not null)
+            if (request is not null)
             {
-                CryptographicOperations.ZeroMemory(request.UploadedImage.Bytes);
+                foreach (DiscordValidatedImage image in request.Images)
+                {
+                    CryptographicOperations.ZeroMemory(image.Bytes);
+                }
             }
         }
     }
@@ -422,7 +425,7 @@ internal sealed class PublicationProcessor(
         }
 
         if (request.Mode == DiscordMessageMode.Embed && !channel.CanEmbed
-            || request.UploadedImage is not null && !channel.CanAttach)
+            || request.Images.Count > 0 && !channel.CanAttach)
         {
             return DeliveryAttemptResult.Permanent(PublicationSafeOutcome.MissingPermission);
         }
@@ -452,7 +455,7 @@ internal sealed class PublicationProcessor(
             token,
             destination.ChannelId,
             message,
-            request.UploadedImage,
+            request.Images,
             cancellationToken);
         PublicationSafeOutcome outcome = MapStatus(sent.Status);
         return sent.Status == DiscordDeliveryStatus.Success

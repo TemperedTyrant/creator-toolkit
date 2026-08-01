@@ -84,6 +84,10 @@ public sealed class AuditRecord
                 AuditEventCode.PublicationDeliveryCancelled => "publication.delivery-cancelled",
                 AuditEventCode.PublicationFinalized => "publication.finalized",
                 AuditEventCode.PublicationPayloadRemoved => "publication.payload-removed",
+                AuditEventCode.AnnouncementMediaAdded => "announcement.media-added",
+                AuditEventCode.AnnouncementMediaRemoved => "announcement.media-removed",
+                AuditEventCode.AnnouncementMediaReordered => "announcement.media-reordered",
+                AuditEventCode.AnnouncementMediaMetadataChanged => "announcement.media-metadata-changed",
                 _ => throw new ArgumentOutOfRangeException(
                     nameof(auditEvent),
                     "The audit event code is not supported."),

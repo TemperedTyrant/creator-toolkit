@@ -3,7 +3,7 @@
 ## Status and goals
 
 This document describes the intended version 1 architecture. The application
-foundation, announcement draft authoring, Discord bot HTTP publishing, and
+foundation, unified announcement authoring with encrypted draft media, Discord bot HTTP publishing, and
 durable Discord publication processing are implemented. Schedules, event
 sources, approvals, and other providers remain future work.
 
@@ -135,8 +135,11 @@ should remain for version 1.
 - **Template:** reusable default content and optional destination variants.
 - **AnnouncementWorkflow:** mapping from a source/event condition to template,
   destinations, and approval behavior inherited from workspace policy.
-- **Announcement:** draft or generated content, revision, state, source/schedule
-  context, and intended destinations.
+- **Announcement:** internal title, Markdown message source, draft/archive state,
+  revision, and provider-neutral media relationship.
+- **AnnouncementMediaAsset:** ordered encrypted draft image with validated format,
+  alt text, spoiler state, and attachment or featured-image presentation. It is
+  editable draft state, not publication history.
 - **ApprovalDecision:** submission revision, submitter, reviewer, decision,
   timestamp, and safe comment.
 - **DestinationConnection:** connector type, display label, encrypted credential

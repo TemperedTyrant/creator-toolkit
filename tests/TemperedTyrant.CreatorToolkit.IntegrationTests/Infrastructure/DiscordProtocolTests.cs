@@ -196,7 +196,7 @@ public sealed class DiscordProtocolTests
             "synthetic-test-bot-token",
             ChannelId,
             request,
-            null,
+            [],
             CancellationToken.None);
 
         Assert.Equal(DiscordDeliveryStatus.Success, result.Status);
@@ -406,6 +406,14 @@ public sealed class DiscordProtocolTests
             true,
             true,
             Guid.Empty);
+        DiscordValidatedImage second = DiscordImageValidation.Validate(
+            new byte[] { 0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x00 },
+            "safe.gif",
+            "image/gif",
+            null,
+            false,
+            false,
+            Guid.NewGuid());
         DiscordMessageRequest request = new(
             null,
             [new DiscordEmbedPayload(null, "Description", null, null, null, new DiscordEmbedMedia($"attachment://{image.OutboundFileName}"), null)],
@@ -413,18 +421,22 @@ public sealed class DiscordProtocolTests
             0,
             DiscordNonce.Create(Guid.Empty, ChannelId),
             true,
-            [new DiscordAttachmentPayload(0, image.OutboundFileName, image.AltText, true)]);
+            [
+                new DiscordAttachmentPayload(0, image.OutboundFileName, image.AltText, true),
+                new DiscordAttachmentPayload(1, second.OutboundFileName, second.AltText, false),
+            ]);
 
         _ = await api.SendMessageAsync(
             "synthetic-multipart-token",
             ChannelId,
             request,
-            image,
+            [image, second],
             CancellationToken.None);
 
         Assert.StartsWith("multipart/form-data", handler.ContentType, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("name=payload_json", handler.Body, StringComparison.Ordinal);
         Assert.Contains("name=\"files[0]\"", handler.Body, StringComparison.Ordinal);
+        Assert.Contains("name=\"files[1]\"", handler.Body, StringComparison.Ordinal);
         Assert.Contains("\"is_spoiler\":true", handler.Body, StringComparison.Ordinal);
         Assert.Contains($"attachment://{image.OutboundFileName}", handler.Body, StringComparison.Ordinal);
         Assert.DoesNotContain("SPOILER_", handler.Body, StringComparison.Ordinal);
@@ -447,7 +459,7 @@ public sealed class DiscordProtocolTests
             "synthetic-rate-token",
             ChannelId,
             CreateSafeMessage(),
-            null,
+            [],
             CancellationToken.None);
         Assert.Equal(DiscordDeliveryStatus.RateLimited, limited.Status);
         Assert.Equal(TimeSpan.FromMilliseconds(125), limited.RetryAfter);
@@ -475,7 +487,7 @@ public sealed class DiscordProtocolTests
             "synthetic-classification-token",
             ChannelId,
             CreateSafeMessage(),
-            null,
+            [],
             CancellationToken.None);
 
         Assert.Equal(expected, result.Status);
@@ -494,7 +506,7 @@ public sealed class DiscordProtocolTests
             "synthetic-error-token",
             ChannelId,
             CreateSafeMessage(),
-            null,
+            [],
             CancellationToken.None);
         Assert.Equal(DiscordDeliveryStatus.DiscordUnavailable, result.Status);
 
@@ -506,7 +518,7 @@ public sealed class DiscordProtocolTests
                 "synthetic-cancel-token",
                 ChannelId,
                 CreateSafeMessage(),
-                null,
+                [],
                 cancellation.Token));
     }
 
@@ -521,7 +533,7 @@ public sealed class DiscordProtocolTests
             "synthetic-failure-token",
             ChannelId,
             CreateSafeMessage(),
-            null,
+            [],
             CancellationToken.None);
         Assert.Equal(DiscordDeliveryStatus.DiscordUnavailable, unavailable.Status);
 
@@ -533,7 +545,7 @@ public sealed class DiscordProtocolTests
             "synthetic-timeout-token",
             ChannelId,
             CreateSafeMessage(),
-            null,
+            [],
             CancellationToken.None);
         Assert.Equal(DiscordDeliveryStatus.TimedOut, timedOut.Status);
 

@@ -20,9 +20,29 @@
         </section>
     }
     <section class="card announcement-content" aria-labelledby="content-heading">
-        <h2 id="content-heading">Announcement content</h2>
-        <div class="announcement-body">@Model.Item.Body</div>
+        <h2 id="content-heading">Message source</h2>
+        <p class="field-help">Discord-compatible Markdown source; Creator Toolkit displays it as encoded text.</p>
+        <div class="announcement-body">@Model.Item.MessageContent</div>
     </section>
+    @if (Model.Item.Media.Count > 0)
+    {
+        <section class="card" aria-labelledby="media-heading">
+            <h2 id="media-heading">Draft images</h2>
+            <div class="composer-media">
+            @foreach (var media in Model.Item.Media.OrderBy(value => value.SortOrder))
+            {
+                <figure class="media-card">
+                    <img src="/Announcements/@Model.Item.Id/Media/@media.Id" alt="@(media.AltText ?? string.Empty)" loading="lazy">
+                    <figcaption>
+                        @(media.Presentation == AnnouncementMediaPresentation.FeaturedImage ? "Featured image" : "Attachment")
+                        @if (media.IsSpoiler) { <span> · Spoiler</span> }
+                        @if (!string.IsNullOrEmpty(media.AltText)) { <span> · @media.AltText</span> }
+                    </figcaption>
+                </figure>
+            }
+            </div>
+        </section>
+    }
     <dl class="status-list announcement-metadata">
         <dt>Created</dt>
         <dd><time datetime="@Model.Item.CreatedAtUtc.ToString("O")">@Model.Item.CreatedAtUtc.ToString("u")</time></dd>

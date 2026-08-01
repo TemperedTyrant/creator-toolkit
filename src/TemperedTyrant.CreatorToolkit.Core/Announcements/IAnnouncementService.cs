@@ -13,16 +13,23 @@ public interface IAnnouncementService
     Task<AnnouncementOperationResult> CreateAsync(
         Guid announcementId,
         string? title,
-        string? body,
+        string? messageContent,
         Guid actorUserId,
+        IReadOnlyList<AnnouncementMediaUpload>? media = null,
         CancellationToken cancellationToken = default);
 
     Task<AnnouncementOperationResult> UpdateAsync(
         Guid announcementId,
         string? title,
-        string? body,
+        string? messageContent,
         long expectedRevision,
         Guid actorUserId,
+        AnnouncementMediaChangeSet? mediaChanges = null,
+        CancellationToken cancellationToken = default);
+
+    Task<AnnouncementMediaContent?> GetMediaContentAsync(
+        Guid announcementId,
+        Guid mediaId,
         CancellationToken cancellationToken = default);
 
     Task<AnnouncementOperationResult> ArchiveAsync(
@@ -81,13 +88,30 @@ public sealed record AnnouncementSummary(
 public sealed record AnnouncementDetails(
     Guid Id,
     string Title,
-    string Body,
+    string MessageContent,
     AnnouncementStatus Status,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset UpdatedAtUtc,
     Guid CreatedByUserId,
     Guid UpdatedByUserId,
+    long Revision,
+    IReadOnlyList<AnnouncementMediaSummary> Media);
+
+public sealed record AnnouncementMediaSummary(
+    Guid Id,
+    int SortOrder,
+    string ContentType,
+    int ByteLength,
+    string GeneratedFileName,
+    string? AltText,
+    bool IsSpoiler,
+    AnnouncementMediaPresentation Presentation,
     long Revision);
+
+public sealed record AnnouncementMediaContent(
+    byte[] Bytes,
+    string ContentType,
+    string GeneratedFileName);
 
 public sealed record AnnouncementOperationResult(
     AnnouncementOperationStatus Status,

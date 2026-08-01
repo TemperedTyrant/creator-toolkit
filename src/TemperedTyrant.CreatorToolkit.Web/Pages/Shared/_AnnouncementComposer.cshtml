@@ -1,0 +1,98 @@
+@model TemperedTyrant.CreatorToolkit.Web.Announcements.AnnouncementComposerViewModel
+@using TemperedTyrant.CreatorToolkit.Core.Announcements
+@using TemperedTyrant.CreatorToolkit.Web.Announcements
+<script src="/js/announcement-composer.js" type="module"></script>
+<div class="announcement-composer" data-announcement-composer>
+    @if (Model.ShowTitle)
+    {
+        <div class="composer-title">
+            <label for="Title">Internal title</label>
+            <input id="Title" name="Title" value="@Model.Title" maxlength="400" autocomplete="off" aria-describedby="title-help">
+            <p id="title-help" class="field-help">Used only inside Creator Toolkit. It is never automatically sent to Discord. Maximum 200 Unicode characters.</p>
+            <span data-valmsg-for="Title" class="field-validation-error">@ViewData.ModelState[nameof(Announcement.Title)]?.Errors.FirstOrDefault()?.ErrorMessage</span>
+        </div>
+    }
+    <div class="composer-shell">
+        <div class="composer-toolbar" role="toolbar" aria-label="Message formatting">
+            <button type="button" data-markdown-command="bold" aria-label="Bold"><strong>B</strong></button>
+            <button type="button" data-markdown-command="italic" aria-label="Italic"><em>I</em></button>
+            <button type="button" data-markdown-command="underline" aria-label="Underline"><u>U</u></button>
+            <button type="button" data-markdown-command="strike" aria-label="Strikethrough"><s>S</s></button>
+            <button type="button" data-markdown-command="code" aria-label="Inline code">Code</button>
+            <button type="button" data-markdown-command="codeblock" aria-label="Code block">Block</button>
+            <button type="button" data-markdown-command="quote" aria-label="Block quote">Quote</button>
+            <button type="button" data-markdown-command="link" aria-label="HTTPS link">Link</button>
+            <button type="button" data-markdown-command="spoiler" aria-label="Spoiler text">Spoiler</button>
+            <button type="button" data-mention-trigger aria-label="Open mention controls" hidden>@@</button>
+            @if (Model.AllowUploads)
+            {
+                <button type="button" data-image-trigger aria-label="Add images">Image</button>
+            }
+            <button type="button" data-advanced-trigger aria-label="Advanced presentation" hidden>More</button>
+        </div>
+        <label class="visually-hidden" for="MessageContent">Message content</label>
+        <textarea id="MessageContent" name="MessageContent" rows="12" maxlength="20000" placeholder="Write your announcement…" aria-describedby="message-help message-count">@Model.MessageContent</textarea>
+        <div class="composer-status-row">
+            <span id="message-help" class="field-help">Discord-compatible Markdown source. Maximum 10,000 Unicode characters.</span>
+            <span id="message-count" class="character-count" aria-live="polite">0 / 10,000</span>
+        </div>
+        <span data-valmsg-for="MessageContent" class="field-validation-error">@ViewData.ModelState[nameof(Announcement.MessageContent)]?.Errors.FirstOrDefault()?.ErrorMessage</span>
+        <div class="composer-chips" data-mention-chips aria-label="Selected mentions"></div>
+        <div class="composer-media" data-media-list aria-label="Announcement images">
+            @for (int index = 0; index < Model.ExistingMedia.Count; index++)
+            {
+                AnnouncementMediaEditInput media = Model.ExistingMedia[index];
+                <article class="media-card" data-saved-media data-sort-order="@media.SortOrder">
+                    @if (Model.AnnouncementId is not null)
+                    {
+                        <img src="/Announcements/@Model.AnnouncementId/Media/@media.Id" alt="@(media.AltText ?? string.Empty)" loading="lazy">
+                    }
+                    <div class="media-card-fields">
+                        <strong>Saved @media.ContentType[(media.ContentType.IndexOf('/') + 1)..].ToUpperInvariant() image</strong>
+                        <span class="muted">@media.ByteLength bytes · @(media.Presentation == AnnouncementMediaPresentation.FeaturedImage ? "Featured" : "Attachment")@(media.IsSpoiler ? " · Spoiler" : string.Empty)</span>
+                        <input type="hidden" name="ExistingMedia[@index].Id" value="@media.Id">
+                        <input type="hidden" name="ExistingMedia[@index].Revision" value="@media.Revision">
+                        <input type="hidden" name="ExistingMedia[@index].SortOrder" value="@media.SortOrder" data-media-order>
+                        <input type="hidden" name="ExistingMedia[@index].ContentType" value="@media.ContentType">
+                        <input type="hidden" name="ExistingMedia[@index].ByteLength" value="@media.ByteLength">
+                        @if (Model.AllowUploads)
+                        {
+                            <label for="existing-alt-@index">Alt text</label>
+                            <input id="existing-alt-@index" name="ExistingMedia[@index].AltText" value="@media.AltText" maxlength="1024">
+                            <label class="choice"><input type="checkbox" name="ExistingMedia[@index].IsSpoiler" value="true" checked="@media.IsSpoiler"> Spoiler</label>
+                            <input type="hidden" name="ExistingMedia[@index].IsSpoiler" value="false">
+                            <label for="existing-presentation-@index">Presentation</label>
+                            <select id="existing-presentation-@index" name="ExistingMedia[@index].Presentation">
+                                <option value="Attachment" selected="@(media.Presentation == AnnouncementMediaPresentation.Attachment)">Attachment</option>
+                                <option value="FeaturedImage" selected="@(media.Presentation == AnnouncementMediaPresentation.FeaturedImage)">Featured image</option>
+                            </select>
+                            <div class="media-card-actions">
+                                <button type="button" class="secondary" data-move-media="left" aria-label="Move saved image left">Move left</button>
+                                <button type="button" class="secondary" data-move-media="right" aria-label="Move saved image right">Move right</button>
+                                <label class="choice danger-text"><input type="checkbox" name="ExistingMedia[@index].Remove" value="true"> Remove</label>
+                                <input type="hidden" name="ExistingMedia[@index].Remove" value="false">
+                            </div>
+                        }
+                        else
+                        {
+                            <input type="hidden" name="ExistingMedia[@index].AltText" value="@media.AltText">
+                            <input type="hidden" name="ExistingMedia[@index].IsSpoiler" value="@media.IsSpoiler">
+                            <input type="hidden" name="ExistingMedia[@index].Presentation" value="@media.Presentation">
+                            <label class="choice"><input type="checkbox" name="SelectedMediaIds" value="@media.Id" checked="@(Model.SelectedMediaIds?.Contains(media.Id) == true)"> Include this image</label>
+                        }
+                    </div>
+                </article>
+            }
+            <div data-new-media-list></div>
+        </div>
+        @if (Model.AllowUploads)
+        {
+            <div class="composer-image-panel" data-image-panel hidden>
+                <label for="NewImages">Upload images</label>
+                <input id="NewImages" name="NewImages" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
+                <p class="field-help">Up to four JPEG, PNG, WebP, or GIF images; 8 MiB combined. Images are encrypted when the draft is saved.</p>
+            </div>
+        }
+        <span data-valmsg-for="Media"></span>
+    </div>
+</div>

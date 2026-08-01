@@ -299,6 +299,24 @@ fieldset {
     overflow-wrap: anywhere;
 }
 
+.announcement-composer { display: grid; gap: 1rem; }
+.composer-shell { border: 1px solid var(--border); border-radius: 0.75rem; overflow: hidden; background: var(--surface); }
+.composer-toolbar { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.5rem; border-bottom: 1px solid var(--border); }
+.composer-toolbar button { min-width: 2.5rem; padding: 0.4rem 0.55rem; }
+.composer-shell textarea { width: 100%; min-height: 13rem; padding: 1rem; border: 0; border-radius: 0; resize: vertical; }
+.composer-status-row, .composer-chips, .composer-image-panel, .composer-media { padding: 0.65rem 1rem; }
+.composer-status-row { display: flex; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--border); }
+.composer-chips { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.mention-chip { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.2rem 0.5rem; border: 1px solid var(--accent); border-radius: 999px; }
+.mention-chip button { min-height: auto; padding: 0 0.25rem; background: transparent; color: inherit; }
+.media-card { display: grid; grid-template-columns: minmax(7rem, 10rem) 1fr; gap: 1rem; margin-block: 0.75rem; padding: 0.75rem; border: 1px solid var(--border); border-radius: 0.65rem; }
+.media-card img { width: 100%; max-height: 10rem; object-fit: contain; border-radius: 0.4rem; }
+.media-card-fields { display: grid; gap: 0.45rem; }
+.media-card-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.composer-option-panel > summary, .compact-selector > summary { cursor: pointer; }
+.pending-removal { opacity: 0.55; }
+.danger-text { color: var(--danger); }
+
 .announcement-metadata {
     margin-block: 1.25rem;
 }
@@ -424,4 +442,7 @@ tr:last-child td {
     .status-list dd {
         margin-bottom: 0.5rem;
     }
+
+    .media-card { grid-template-columns: 1fr; }
+    .composer-status-row { flex-direction: column; }
 }

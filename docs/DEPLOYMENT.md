@@ -110,13 +110,14 @@ permissions and ownership by container UID `1654`, and then start the applicatio
 and verify health and sign-in. Test backups by restoring them to an isolated,
 disposable installation.
 
-Announcement drafts are stored in the same SQLite database, so they are
-included only when that database and the Data Protection key ring are backed up
-and restored together. On upgrade, normal application startup applies the
-reviewed announcement-schema migration before readiness succeeds. Stop the
-application and take a coordinated backup before upgrading; do not live-copy
-individual SQLite files. The migration adds the announcement table and indexes
-without modifying Identity, audit, diagnostics, or protected-secret data.
+Announcement drafts and their encrypted image media are stored in the same
+SQLite database. Media remains decryptable only when that database and the Data
+Protection key ring are backed up and restored together. On upgrade, normal
+application startup applies the reviewed announcement-media migration before
+readiness succeeds. Stop the application and take a coordinated backup before
+upgrading; do not live-copy individual SQLite files. The migration adds only
+the announcement-media table and index without rewriting existing announcement,
+publication, Identity, audit, diagnostic, or protected-secret data.
 
 Pending Discord publications, including their encrypted immutable payloads and
 uploaded image bytes, are also stored in SQLite. Data Protection keys are

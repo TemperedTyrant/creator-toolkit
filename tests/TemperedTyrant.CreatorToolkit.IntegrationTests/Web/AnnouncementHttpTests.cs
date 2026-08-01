@@ -22,6 +22,125 @@ public sealed partial class AnnouncementHttpTests
     private const string UserPassword = "silver meadow lantern compass";
 
     [Fact]
+    public async Task UnifiedComposerHasOneMessageSurfaceAndMediaPreviewIsPrivate()
+    {
+        await using CreatorToolkitWebFactory factory = new();
+        using HttpClient ownerClient = CreateClient(factory);
+        using HttpClient viewerClient = CreateClient(factory);
+        using HttpClient anonymousClient = CreateClient(factory);
+        Guid ownerId = await InitializeOwnerAsync(factory.Services);
+        _ = await CreateAndActivateAsync(
+            factory.Services,
+            ownerId,
+            "media-viewer",
+            SystemRoles.Viewer);
+        await LoginAsync(ownerClient, "owner-local", OwnerPassword);
+        await LoginAsync(viewerClient, "media-viewer", UserPassword);
+
+        string newHtml = await ownerClient.GetStringAsync("/Announcements/New");
+        Assert.True(Regex.Count(newHtml, "name=\"MessageContent\"", RegexOptions.CultureInvariant) == 1);
+        Assert.Contains("data-announcement-composer", newHtml, StringComparison.Ordinal);
+        Assert.Contains("data-markdown-command=\"bold\"", newHtml, StringComparison.Ordinal);
+        Assert.Contains("type=\"button\"", newHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("name=\"PlainContent\"", newHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("name=\"EmbedDescription\"", newHtml, StringComparison.Ordinal);
+
+        byte[] png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x61, 0x62];
+        Guid announcementId = Guid.NewGuid();
+        Guid mediaId;
+        await using (AsyncServiceScope scope = factory.Services.CreateAsyncScope())
+        {
+            IAnnouncementService announcements = scope.ServiceProvider.GetRequiredService<IAnnouncementService>();
+            Assert.Equal(
+                AnnouncementOperationStatus.Succeeded,
+                (await announcements.CreateAsync(
+                    announcementId,
+                    "Internal title",
+                    "Message",
+                    ownerId,
+                    [new AnnouncementMediaUpload(
+                        png.ToArray(),
+                        "synthetic.png",
+                        "image/png",
+                        "Safe alt",
+                        false,
+                        AnnouncementMediaPresentation.Attachment,
+                        0)])).Status);
+            mediaId = Assert.Single((await announcements.GetAsync(announcementId))!.Media).Id;
+        }
+
+        HttpResponseMessage preview = await ownerClient.GetAsync($"/Announcements/{announcementId}/Media/{mediaId}");
+        Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
+        Assert.Equal("image/png", preview.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(png, await preview.Content.ReadAsByteArrayAsync());
+        Assert.Contains("no-store", preview.Headers.CacheControl?.ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("nosniff", preview.Headers.GetValues("X-Content-Type-Options").Single());
+        Assert.Equal("inline", preview.Content.Headers.ContentDisposition?.DispositionType);
+
+        HttpResponseMessage crossAnnouncement = await ownerClient.GetAsync($"/Announcements/{Guid.NewGuid()}/Media/{mediaId}");
+        Assert.Equal(HttpStatusCode.NotFound, crossAnnouncement.StatusCode);
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await viewerClient.GetAsync($"/Announcements/{announcementId}/Media/{mediaId}")).StatusCode);
+        HttpResponseMessage anonymous = await anonymousClient.GetAsync($"/Announcements/{announcementId}/Media/{mediaId}");
+        Assert.Equal(HttpStatusCode.Redirect, anonymous.StatusCode);
+    }
+
+    [Fact]
+    public async Task MultipartCreateAndRevisionBoundEditPersistThenRemoveMedia()
+    {
+        await using CreatorToolkitWebFactory factory = new();
+        using HttpClient client = CreateClient(factory);
+        _ = await InitializeOwnerAsync(factory.Services);
+        await LoginAsync(client, "owner-local", OwnerPassword);
+        string newHtml = await client.GetStringAsync("/Announcements/New");
+        Guid announcementId = Guid.Parse(GetHiddenValue(newHtml, "AnnouncementId"));
+        byte[] png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x71, 0x72];
+        using var createForm = new MultipartFormDataContent();
+        AddField(createForm, "__RequestVerificationToken", GetAntiforgeryToken(newHtml));
+        AddField(createForm, "AnnouncementId", announcementId.ToString());
+        AddField(createForm, "Title", "Internal media draft");
+        AddField(createForm, "MessageContent", "Markdown message");
+        AddField(createForm, "NewImageAltTexts[0]", "Initial alt");
+        AddField(createForm, "NewImageSpoilers[0]", "true");
+        AddField(createForm, "NewImagePresentations[0]", "FeaturedImage");
+        AddField(createForm, "NewImageSortOrders[0]", "0");
+        var image = new ByteArrayContent(png);
+        image.Headers.ContentType = new("image/png");
+        createForm.Add(image, "NewImages", "synthetic.png");
+
+        HttpResponseMessage created = await client.PostAsync("/Announcements/New", createForm);
+        Assert.Equal(HttpStatusCode.Redirect, created.StatusCode);
+        string editHtml = await client.GetStringAsync($"/Announcements/{announcementId}/Edit");
+        Assert.Contains("Initial alt", editHtml, StringComparison.Ordinal);
+        Assert.Contains($"/Announcements/{announcementId}/Media/", editHtml, StringComparison.Ordinal);
+        string mediaId = GetHiddenValue(editHtml, "ExistingMedia[0].Id");
+        string mediaRevision = GetHiddenValue(editHtml, "ExistingMedia[0].Revision");
+        string revision = GetHiddenValue(editHtml, "Revision");
+
+        HttpResponseMessage removed = await client.PostAsync(
+            $"/Announcements/{announcementId}/Edit",
+            Form(
+                ("__RequestVerificationToken", GetAntiforgeryToken(editHtml)),
+                ("Revision", revision),
+                ("Title", "Internal media draft"),
+                ("MessageContent", "Markdown message"),
+                ("ExistingMedia[0].Id", mediaId),
+                ("ExistingMedia[0].Revision", mediaRevision),
+                ("ExistingMedia[0].SortOrder", "0"),
+                ("ExistingMedia[0].AltText", "Initial alt"),
+                ("ExistingMedia[0].IsSpoiler", "true"),
+                ("ExistingMedia[0].Presentation", "FeaturedImage"),
+                ("ExistingMedia[0].Remove", "true")));
+        Assert.Equal(HttpStatusCode.Redirect, removed.StatusCode);
+
+        await using AsyncServiceScope verification = factory.Services.CreateAsyncScope();
+        CreatorToolkitDbContext db = verification.ServiceProvider.GetRequiredService<CreatorToolkitDbContext>();
+        Assert.Empty(await db.AnnouncementMediaAssets.Where(value => value.AnnouncementId == announcementId).ToArrayAsync());
+        Assert.Equal(2, await db.Announcements.Where(value => value.Id == announcementId).Select(value => value.Revision).SingleAsync());
+    }
+
+    [Fact]
     public async Task OwnerCompletesDraftEditArchiveRestoreAndConfirmedDeleteWorkflow()
     {
         await using CreatorToolkitWebFactory factory = new();
@@ -43,7 +162,7 @@ public sealed partial class AnnouncementHttpTests
                 ("__RequestVerificationToken", GetAntiforgeryToken(newHtml)),
                 ("AnnouncementId", announcementId.ToString()),
                 ("Title", scriptTitle),
-                ("Body", scriptBody)));
+                ("MessageContent", scriptBody)));
         Assert.Equal(HttpStatusCode.Redirect, created.StatusCode);
         Assert.Equal(
             $"/Announcements/{announcementId}?notice=created",
@@ -72,7 +191,7 @@ public sealed partial class AnnouncementHttpTests
                 ("__RequestVerificationToken", GetAntiforgeryToken(editHtml)),
                 ("Revision", FormatRevision(firstRevision)),
                 ("Title", "Edited draft"),
-                ("Body", "Edited first line\nEdited second line")));
+                ("MessageContent", "Edited first line\nEdited second line")));
         Assert.Equal(HttpStatusCode.Redirect, updated.StatusCode);
 
         details = await client.GetAsync(updated.Headers.Location);
@@ -210,14 +329,14 @@ public sealed partial class AnnouncementHttpTests
                     ("__RequestVerificationToken", viewerToken),
                     ("AnnouncementId", Guid.NewGuid().ToString()),
                     ("Title", "Rejected viewer draft"),
-                    ("Body", "Rejected viewer body"))),
+                    ("MessageContent", "Rejected viewer body"))),
             (
                 $"/Announcements/{announcementId}/Edit",
                 Form(
                     ("__RequestVerificationToken", viewerToken),
                     ("Revision", "1"),
                     ("Title", "Rejected viewer edit"),
-                    ("Body", "Rejected viewer body"))),
+                    ("MessageContent", "Rejected viewer body"))),
             (
                 $"/Announcements/{announcementId}/Restore",
                 Form(
@@ -301,7 +420,7 @@ public sealed partial class AnnouncementHttpTests
                     ("__RequestVerificationToken", GetAntiforgeryToken(newHtml)),
                     ("AnnouncementId", announcementId.ToString()),
                     ("Title", "Role authorization draft"),
-                    ("Body", "Role authorization body")))).StatusCode);
+                    ("MessageContent", "Role authorization body")))).StatusCode);
 
         string editHtml = await client.GetStringAsync($"/Announcements/{announcementId}/Edit");
         Assert.Equal(
@@ -312,7 +431,7 @@ public sealed partial class AnnouncementHttpTests
                     ("__RequestVerificationToken", GetAntiforgeryToken(editHtml)),
                     ("Revision", GetHiddenValue(editHtml, "Revision")),
                     ("Title", "Role authorization edit"),
-                    ("Body", "Role authorization edited body")))).StatusCode);
+                    ("MessageContent", "Role authorization edited body")))).StatusCode);
 
         string detailsHtml = await client.GetStringAsync($"/Announcements/{announcementId}");
         Assert.Equal(
@@ -387,7 +506,7 @@ public sealed partial class AnnouncementHttpTests
             ("__RequestVerificationToken", antiforgery),
             ("AnnouncementId", submissionId.ToString()),
             ("Title", "One submitted draft"),
-            ("Body", "One submitted body"));
+            ("MessageContent", "One submitted body"));
         Assert.Equal(
             HttpStatusCode.Redirect,
             (await client.PostAsync("/Announcements/New", CreateForm())).StatusCode);
@@ -450,7 +569,7 @@ public sealed partial class AnnouncementHttpTests
                 ("__RequestVerificationToken", antiforgery),
                 ("Revision", revision),
                 ("Title", titleCanary),
-                ("Body", bodyCanary)));
+                ("MessageContent", bodyCanary)));
         string staleHtml = await stale.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.OK, stale.StatusCode);
         Assert.Contains("changed after you opened it", staleHtml, StringComparison.Ordinal);
@@ -468,7 +587,7 @@ public sealed partial class AnnouncementHttpTests
             .GetRequiredService<CreatorToolkitDbContext>();
         Announcement current = await db.Announcements.AsNoTracking().SingleAsync();
         Assert.Equal("Current title", current.Title);
-        Assert.Equal("Current body", current.Body);
+        Assert.Equal("Current body", current.MessageContent);
         Assert.Equal(2, current.Revision);
         Assert.Equal(
             2,
@@ -598,6 +717,9 @@ public sealed partial class AnnouncementHttpTests
             values.Select(
                 value => new KeyValuePair<string, string>(value.Name, value.Value)));
     }
+
+    private static void AddField(MultipartFormDataContent form, string name, string value) =>
+        form.Add(new StringContent(value), name);
 
     private static string GetAntiforgeryToken(string html)
     {

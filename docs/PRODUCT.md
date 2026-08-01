@@ -3,7 +3,7 @@
 ## Status
 
 TemperedTyrant Creator Toolkit is in pre-alpha development. The milestone 1
-foundation, plain-text announcement draft authoring, and durable Discord bot
+foundation, Markdown-backed announcement draft authoring with persistent media, and durable Discord bot
 publishing are implemented. Owners, Admins, and Editors can create, edit,
 archive, restore, search, and permanently
 delete drafts; Viewers have read-only access. Owners and Admins manage Discord
@@ -132,10 +132,19 @@ authorization boundary.
 
 ## Implemented announcement authoring
 
-Announcements are plain-text drafts with a required title of at most 200
-Unicode scalar values and a required body of at most 10,000 Unicode scalar
-values. Body paragraphs and line breaks are preserved and displayed as encoded
-text; announcement content is never interpreted as HTML.
+Announcements use a compact Markdown-backed composer with a required internal
+title of at most 200 Unicode scalar values and required message content of at
+most 10,000 Unicode scalar values. The title identifies the draft inside
+Creator Toolkit and is never inserted into Discord automatically. Message
+paragraphs and line breaks are preserved as encoded source; content is never
+stored or interpreted as HTML.
+
+Each draft may contain up to four JPEG, PNG, WebP, or GIF images with a combined
+unencrypted limit of 8 MiB. Images, alt text, spoiler state, featured-image
+selection, and deterministic order are edited within the composer. Image bytes
+are encrypted in SQLite with a media-specific Data Protection purpose and are
+served only through the authenticated, no-store announcement preview endpoint.
+They persist across restart when the database and key ring remain together.
 
 New announcements start as Draft. Archived announcements are read-only until
 restored. Permanent deletion requires a dedicated confirmation page. Each edit,
@@ -191,8 +200,9 @@ installation.
 ### Prepare and publish an announcement
 
 Draft authoring and durable Discord publication are implemented. The user
-chooses one server and up to ten saved channels, prepares a plain message or one
-rich embed, explicitly selects any permitted mentions, reviews the form, and
+chooses one server and up to ten saved channels, reviews the announcement's
+single message source and stored images, selects plain or optional rich-embed
+presentation, explicitly selects any permitted mentions, and
 queues an immutable encrypted snapshot. The browser is redirected immediately
 to Publish History while the in-process worker delivers each channel
 independently.
@@ -203,6 +213,10 @@ automatic retries after the initial attempt. Queued and retrying work survives
 restart through SQLite leases and stable Discord nonces. Users may cancel
 remaining work, but cancellation cannot remove a message already accepted by
 Discord.
+
+Later edits or removal of draft media do not change an already queued snapshot.
+Persistent draft media is suitable as the source for a future scheduling
+snapshot, but scheduling is not implemented.
 
 ### Approval
 

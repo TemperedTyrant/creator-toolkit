@@ -585,7 +585,7 @@ internal sealed class DiscordConfigurationService(
                     token,
                     destination.ChannelId,
                     request,
-                    null,
+                    [],
                     ct),
                 cancellationToken);
         }

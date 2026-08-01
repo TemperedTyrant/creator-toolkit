@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using TemperedTyrant.CreatorToolkit.Core.Announcements;
 
 namespace TemperedTyrant.CreatorToolkit.UnitTests.Announcements;
@@ -23,7 +24,7 @@ public sealed class AnnouncementTests
         Assert.True(result.IsSuccess);
         Announcement announcement = Assert.IsType<Announcement>(result.Announcement);
         Assert.Equal("Product update", announcement.Title);
-        Assert.Equal(body, announcement.Body);
+        Assert.Equal(body, announcement.MessageContent);
         Assert.Equal(AnnouncementStatus.Draft, announcement.Status);
         Assert.Equal(InitialTime, announcement.CreatedAtUtc);
         Assert.Equal(InitialTime, announcement.UpdatedAtUtc);
@@ -39,7 +40,7 @@ public sealed class AnnouncementTests
             Enumerable.Repeat("😀", Announcement.MaximumTitleScalarCount));
         string excessiveTitle = maximumTitle + "😀";
         string maximumBody = string.Concat(
-            Enumerable.Repeat("𐐷", Announcement.MaximumBodyScalarCount));
+            Enumerable.Repeat("𐐷", Announcement.MaximumMessageContentScalarCount));
 
         Assert.True(
             Announcement.Create(
@@ -63,7 +64,7 @@ public sealed class AnnouncementTests
                 && error.Message.Contains("200", StringComparison.Ordinal));
         Assert.Contains(
             invalid.ValidationErrors,
-            error => error.Field == nameof(Announcement.Body)
+            error => error.Field == nameof(Announcement.MessageContent)
                 && error.Message == "Enter announcement content.");
     }
 
@@ -128,6 +129,33 @@ public sealed class AnnouncementTests
             announcement.Archive(2, ActorId, InitialTime.AddMinutes(3)).Status);
         Assert.Equal(2, announcement.Revision);
         Assert.Equal("Original", announcement.Title);
+    }
+
+    [Fact]
+    public void MediaMetadataUsesBoundedOrderingFeaturedStateAndOptimisticRevision()
+    {
+        DateTimeOffset createdAt = InitialTime;
+        AnnouncementMediaAsset media = AnnouncementMediaAsset.Create(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            0,
+            [1, 2, 3],
+            "image/png",
+            16,
+            new byte[SHA256.HashSizeInBytes],
+            "announcement-safe.png",
+            "  Product screenshot  ",
+            false,
+            AnnouncementMediaPresentation.Attachment,
+            createdAt);
+
+        Assert.Equal("Product screenshot", media.AltText);
+        Assert.False(media.UpdateMetadata(0, 1, null, true, AnnouncementMediaPresentation.FeaturedImage, createdAt.AddMinutes(1)));
+        Assert.True(media.UpdateMetadata(1, 1, null, true, AnnouncementMediaPresentation.FeaturedImage, createdAt.AddMinutes(1)));
+        Assert.Equal(2, media.Revision);
+        Assert.Equal(AnnouncementMediaPresentation.FeaturedImage, media.Presentation);
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            media.UpdateMetadata(2, AnnouncementMediaAsset.MaximumAssetCount, null, false, AnnouncementMediaPresentation.Attachment, createdAt));
     }
 
     private static Announcement CreateAnnouncement()
