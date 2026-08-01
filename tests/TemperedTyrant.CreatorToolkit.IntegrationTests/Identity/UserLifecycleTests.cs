@@ -132,6 +132,50 @@ public sealed class UserLifecycleTests
     }
 
     [Fact]
+    public async Task ActivationCapabilitiesUseIndependentTwoHundredFiftySixBitValuesAndPersistOnlyHashes()
+    {
+        using TestDataDirectory data = new();
+        List<string> logs = [];
+        await using ServiceProvider provider = TestServices.Create(data.Path, logs);
+        await TestServices.InitializeAsync(provider);
+        Guid ownerId = await InitializeOwnerAsync(provider);
+        List<string> rawCapabilities = [];
+
+        for (int index = 0; index < 8; index++)
+        {
+            UserLifecycleResult pending = await CreatePendingAsync(
+                provider,
+                ownerId,
+                $"entropy-user-{index}",
+                SystemRoles.Viewer);
+            string raw = pending.OneTimeActivationCapability!;
+            Assert.Equal(43, raw.Length);
+            Assert.Equal(32, WebEncoders.Base64UrlDecode(raw).Length);
+            rawCapabilities.Add(raw);
+        }
+
+        Assert.Equal(rawCapabilities.Count, rawCapabilities.Distinct(StringComparer.Ordinal).Count());
+        await using AsyncServiceScope scope = provider.CreateAsyncScope();
+        CreatorToolkitDbContext db = scope.ServiceProvider
+            .GetRequiredService<CreatorToolkitDbContext>();
+        byte[][] storedHashes = await db.SecurityCapabilities
+            .Where(capability => capability.Purpose == CapabilityPurpose.ActivateUser)
+            .Select(capability => capability.TokenHash)
+            .ToArrayAsync();
+        Assert.Equal(rawCapabilities.Count, storedHashes.Length);
+        foreach (string raw in rawCapabilities)
+        {
+            byte[] expectedHash = Hash(raw);
+            Assert.Single(storedHashes, stored => stored.SequenceEqual(expectedHash));
+            AssertSecretAbsentFromDatabaseFiles(data.Path, raw);
+            if (logs.Any(message => message.Contains(raw, StringComparison.Ordinal)))
+            {
+                Assert.Fail("An activation capability appeared in captured logs.");
+            }
+        }
+    }
+
+    [Fact]
     public async Task ActivationIsSingleUseAtomicAndUsesTimeProvider()
     {
         using TestDataDirectory data = new();
@@ -847,10 +891,12 @@ public sealed class UserLifecycleTests
             "creator-toolkit.db*",
             SearchOption.TopDirectoryOnly))
         {
-            Assert.DoesNotContain(
-                secret,
-                Encoding.Latin1.GetString(File.ReadAllBytes(path)),
-                StringComparison.Ordinal);
+            if (Encoding.Latin1
+                .GetString(File.ReadAllBytes(path))
+                .Contains(secret, StringComparison.Ordinal))
+            {
+                Assert.Fail("A submitted security value appeared in a database file.");
+            }
         }
     }
 

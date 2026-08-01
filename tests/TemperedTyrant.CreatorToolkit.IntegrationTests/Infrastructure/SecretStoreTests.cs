@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TemperedTyrant.CreatorToolkit.Core.Security;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
@@ -117,6 +118,52 @@ public sealed class SecretStoreTests
             plaintext,
             replacementException.ToString(),
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CorruptedCiphertextFailsPurposeBoundAndCanBeReplacedWithoutDisclosure()
+    {
+        using TestDataDirectory data = new();
+        List<string> logs = [];
+        await using ServiceProvider provider = TestServices.Create(data.Path, logs);
+        await TestServices.InitializeAsync(provider);
+        await using AsyncServiceScope scope = provider.CreateAsyncScope();
+        ISecretStore store = scope.ServiceProvider.GetRequiredService<ISecretStore>();
+        const string original = "corruption-original-canary-8cb359";
+        const string replacement = "corruption-replacement-canary-f514ad";
+        SecretReference reference = await store.CreateAsync("corruption-test", original);
+        SecretRow originalRow = await ReadSecretRowAsync(provider, reference);
+        IDataProtector protector = provider
+            .GetRequiredService<IDataProtectionProvider>()
+            .CreateProtector(
+                "TemperedTyrant.CreatorToolkit.ProtectedSecretStore.v1",
+                originalRow.Purpose);
+
+        const string corrupted = "not-valid-data-protection-ciphertext";
+        CryptographicException failure = Assert.Throws<CryptographicException>(
+            () => protector.Unprotect(corrupted));
+        Assert.DoesNotContain(original, failure.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(replacement, failure.ToString(), StringComparison.Ordinal);
+
+        await using (AsyncServiceScope corruptionScope = provider.CreateAsyncScope())
+        {
+            CreatorToolkitDbContext db = corruptionScope.ServiceProvider
+                .GetRequiredService<CreatorToolkitDbContext>();
+            ProtectedSecretRecord record = await db.ProtectedSecrets.SingleAsync(
+                candidate => candidate.Id == reference.Id);
+            record.Ciphertext = corrupted;
+            await db.SaveChangesAsync();
+        }
+
+        await store.ReplaceAsync(reference, replacement);
+        SecretRow replaced = await ReadSecretRowAsync(provider, reference);
+        Assert.Equal(replacement, protector.Unprotect(replaced.Ciphertext));
+        Assert.DoesNotContain(original, replaced.Ciphertext, StringComparison.Ordinal);
+        Assert.DoesNotContain(replacement, replaced.Ciphertext, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            logs,
+            message => message.Contains(original, StringComparison.Ordinal)
+                || message.Contains(replacement, StringComparison.Ordinal));
     }
 
     private static async Task<SecretRow> ReadSecretRowAsync(

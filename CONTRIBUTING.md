@@ -82,8 +82,9 @@ hide failures with warning-only settings or unrelated generated changes.
 
 The production-project deprecation audit deliberately excludes the test
 projects. NuGet classifies the existing xUnit 2 packages as legacy; migration to
-xUnit v3 is a separately reviewed checkpoint-11 consideration, not an automatic
-checkpoint-10 package substitution.
+xUnit v3 remains deferred to a separate compatibility review. It is not combined
+with milestone-one security hardening and does not weaken the production-package
+deprecation audit.
 
 Dependabot checks NuGet, the Dockerfile base images, and GitHub Actions weekly
 with small pull-request limits and narrowly related groups. It uses Dependabot's

@@ -154,6 +154,66 @@ public sealed partial class UserLifecycleHttpTests
     }
 
     [Fact]
+    public async Task UnauthorizedManagementDoesNotRevealProtectedUserExistence()
+    {
+        await using CreatorToolkitWebFactory factory = new();
+        using HttpClient ownerClient = CreateClient(factory);
+        Guid ownerId = await SetupAndLoginOwnerAsync(factory, ownerClient);
+        await CreateAndActivateAsync(
+            factory.Services,
+            ownerId,
+            "non-enumerating-admin",
+            SystemRoles.Admin);
+        using HttpClient adminClient = CreateClient(factory);
+        await LoginAsync(adminClient, "non-enumerating-admin", UserPassword);
+
+        HttpResponseMessage protectedOwner = await adminClient.GetAsync(
+            $"/Account/ManageUser?userId={ownerId}");
+        HttpResponseMessage missingUser = await adminClient.GetAsync(
+            $"/Account/ManageUser?userId={Guid.NewGuid()}");
+        string protectedBody = await protectedOwner.Content.ReadAsStringAsync();
+        string missingBody = await missingUser.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.NotFound, protectedOwner.StatusCode);
+        Assert.Equal(protectedOwner.StatusCode, missingUser.StatusCode);
+        Assert.Equal(protectedBody, missingBody);
+        Assert.DoesNotContain(ownerId.ToString(), protectedBody, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetRequestsForMutationPagesLeaveSecurityStateUnchanged()
+    {
+        await using CreatorToolkitWebFactory factory = new();
+        using HttpClient ownerClient = CreateClient(factory);
+        Guid ownerId = await SetupAndLoginOwnerAsync(factory, ownerClient);
+        CreatedUser target = await CreateAndActivateAsync(
+            factory.Services,
+            ownerId,
+            "safe-get-target",
+            SystemRoles.Viewer);
+        SecurityState before = await ReadSecurityStateAsync(factory.Services, target.Id);
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await ownerClient.GetAsync("/Account/CreateUser")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await ownerClient.GetAsync(
+                $"/Account/ManageUser?userId={target.Id}")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await ownerClient.GetAsync("/Account/TransferOwnership")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await ownerClient.GetAsync("/Logout")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await ownerClient.GetAsync("/Dashboard")).StatusCode);
+
+        Assert.Equal(before, await ReadSecurityStateAsync(factory.Services, target.Id));
+    }
+
+    [Fact]
     public async Task ActivationLinkIsShownOnceAndCapabilityPageNeverBindsQueryValues()
     {
         await using CreatorToolkitWebFactory factory = new();
@@ -605,6 +665,39 @@ public sealed partial class UserLifecycleHttpTests
             .SingleAsync();
     }
 
+    private static async Task<SecurityState> ReadSecurityStateAsync(
+        IServiceProvider services,
+        Guid targetUserId)
+    {
+        await using AsyncServiceScope scope = services.CreateAsyncScope();
+        CreatorToolkitDbContext db = scope.ServiceProvider
+            .GetRequiredService<CreatorToolkitDbContext>();
+        ApplicationUser target = await db.Users
+            .AsNoTracking()
+            .SingleAsync(user => user.Id == targetUserId);
+        var ownership = await db.Ownerships
+            .AsNoTracking()
+            .Select(record => new { record.OwnerUserId, record.Revision })
+            .SingleAsync();
+        string role = await db.UserRoles
+            .Where(userRole => userRole.UserId == targetUserId)
+            .Join(
+                db.Roles,
+                userRole => userRole.RoleId,
+                roleRecord => roleRecord.Id,
+                (_, roleRecord) => roleRecord.Name!)
+            .SingleAsync();
+        return new SecurityState(
+            target.ConcurrencyStamp!,
+            target.SecurityStamp!,
+            target.IsEnabled,
+            role,
+            ownership.OwnerUserId,
+            ownership.Revision,
+            await db.AuditRecords.CountAsync(),
+            await db.SecurityCapabilities.CountAsync());
+    }
+
     private static HttpClient CreateClient(CreatorToolkitWebFactory factory)
     {
         return factory.CreateClient(
@@ -652,6 +745,16 @@ public sealed partial class UserLifecycleHttpTests
     }
 
     private sealed record CreatedUser(Guid Id);
+
+    private sealed record SecurityState(
+        string ConcurrencyStamp,
+        string SecurityStamp,
+        bool IsEnabled,
+        string Role,
+        Guid OwnerUserId,
+        long OwnershipRevision,
+        int AuditCount,
+        int CapabilityCount);
 
     [GeneratedRegex(
         "name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"",
