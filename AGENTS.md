@@ -16,13 +16,18 @@ The project is licensed under `AGPL-3.0-only`.
 
 ## Current status
 
-The repository is in milestone 1 application-foundation development. Add
-application source code only within an explicitly authorized implementation
-checkpoint; future milestone work remains documentation-only until approved.
+Milestone 1 application foundation is complete through security hardening.
 
-## Expected layout
+The next planned product milestone is Creator Announcements authoring. Only
+implement behavior explicitly authorized by the active checkpoint.
 
-When implementation begins, preserve this high-level layout:
+Do not begin destinations, external publishing, durable publishing jobs,
+scheduling, event sources, or provider integrations until a later checkpoint
+explicitly authorizes them.
+
+## Repository layout
+
+Preserve this high-level layout:
 
 ```text
 .
@@ -39,34 +44,78 @@ When implementation begins, preserve this high-level layout:
 └── TemperedTyrant.CreatorToolkit.slnx
 ```
 
-Use repository-relative paths in commands and documentation. The final solution
-and project filenames may be introduced during milestone 1, but the application
-must remain a single deployable modular monolith. Multiple .NET projects enforce
-logical boundaries; they do not imply multiple applications, services,
-processes, or containers. The future root namespace is
-`TemperedTyrant.CreatorToolkit`, and the future CLI and executable identifier is
-`creator-toolkit`.
+Use repository-relative paths in commands and documentation.
 
-## Expected commands
+The application is a single deployable modular monolith. Multiple .NET
+projects enforce logical boundaries; they do not represent separate
+applications, services, processes, or containers.
 
-Once the .NET solution exists, run commands from the repository root:
+The root namespace is `TemperedTyrant.CreatorToolkit`. The CLI and executable
+identifier is `creator-toolkit`.
+
+## Verification commands
+
+Run applicable commands from the repository root:
 
 ```sh
 dotnet restore
-dotnet build --no-restore
-dotnet test --no-build
-dotnet format --verify-no-changes
-```
 
-When container files exist, also validate them with:
+dotnet build \
+  --no-restore \
+  --disable-build-servers \
+  -m:1
 
-```sh
+dotnet test \
+  --no-build \
+  --disable-build-servers \
+  -m:1
+
+dotnet format \
+  --verify-no-changes \
+  --no-restore
+
+dotnet ef migrations has-pending-model-changes \
+  --project src/TemperedTyrant.CreatorToolkit.Infrastructure \
+  --startup-project src/TemperedTyrant.CreatorToolkit.Web
+
+dotnet list TemperedTyrant.CreatorToolkit.slnx package \
+  --vulnerable \
+  --include-transitive
+
 docker compose config --quiet
-docker buildx build --platform linux/amd64,linux/arm64 --check .
+docker compose build
+git diff --check
 ```
 
-If a command is not available or does not yet apply, report that fact instead of
-claiming it passed. Never substitute a narrower check without saying so.
+Run the repository's production-package deprecation check when production
+dependencies change.
+
+Actual `linux/amd64` and `linux/arm64` application builds are required through
+GitHub Actions. Run equivalent Buildx validation locally when Buildx is
+available. If a command is unavailable, report that fact rather than claiming
+it passed or silently substituting a narrower check.
+
+## Branch and dependency baseline
+
+Before starting a new checkpoint:
+
+1. Confirm the worktree is clean.
+2. Switch to `main`.
+3. Run `git pull --ff-only`.
+4. Confirm local `main` matches `origin/main`.
+5. Create a new feature branch from the updated `main`.
+
+Treat `Directory.Packages.props`, `global.json`, and project files on the
+updated `main` branch as the dependency and toolchain source of truth.
+
+Do not downgrade, replace, or pin a dependency to an older version unless the
+user explicitly requests it or a demonstrated compatibility defect requires
+it. Stop and report before making any dependency downgrade.
+
+Ignore generated dependency information under `bin/` and `obj/`. Clean and
+restore generated outputs when dependency inspection produces stale results.
+
+Do not mix unrelated dependency upgrades into a product checkpoint.
 
 ## Architecture and dependency rules
 
@@ -75,17 +124,19 @@ claiming it passed. Never substitute a narrower check without saying so.
 - Keep one application container, one named persistent volume, and one process
   boundary for version 1. Do not introduce PostgreSQL, Redis, Temporal, Kafka,
   or Kubernetes.
-
-No separate worker service, process, or container. Durable background jobs run through ASP.NET Core hosted services inside the application process.
+- Do not introduce a separate worker service, process, or container. When
+  background business processing is implemented, run it through ASP.NET Core
+  hosted services inside the application process.
 - Preserve modular-monolith boundaries. Core domain and application code must
   not depend on Discord, Bluesky, or another provider.
 - Keep hosting and Razor Pages in Web, provider-neutral domain and application
   behavior in Core, and persistence and provider adapters in Infrastructure.
-- Put version 1 provider behavior behind connector or trigger-source
-  interfaces. Preserve a seam for future action adapters without introducing a
-  generic action contract or workflow engine prematurely.
-- Preserve SQLite durable-job leasing, bounded retry handling, crash recovery,
-  and graceful hosted-service shutdown.
+- When provider behavior is introduced, keep it behind provider-neutral
+  connector or trigger-source interfaces. Preserve the creator-event/action
+  seam without introducing a generic workflow engine prematurely.
+- When durable publishing jobs are introduced, use SQLite-backed leasing,
+  bounded action-specific retries, crash recovery, idempotency safeguards, and
+  graceful hosted-service shutdown.
 - Use ASP.NET Core Identity for users, password hashing, recovery tokens,
   security stamps, roles, and cookie integration. Do not create custom password
   hashing, authentication cookies, or authentication token formats.
@@ -100,6 +151,23 @@ No separate worker service, process, or container. Durable background jobs run t
   generic workflow engine in version 1.
 - Do not implement X or policy-bypassing browser automation. Reddit remains
   deferred until a permitted, free, and repeatable setup is confirmed.
+
+## Persistence and migrations
+
+Add or modify persisted entities only when the active checkpoint explicitly
+authorizes the schema change.
+
+For every authorized EF model change:
+
+- add a reviewed migration
+- inspect generated SQL and migration operations
+- test migration from the previous committed schema
+- test fresh database creation
+- test persistence across application restart
+- update model and deployment documentation where relevant
+
+Unexpected EF model drift is a blocker. Do not create an incidental migration
+merely to make the drift check pass.
 
 ## Security constraints
 
@@ -150,8 +218,8 @@ Diagnostic export schemas must use allowlists, not blocklists.
 - Update documentation and tests whenever behavior, configuration, security
   boundaries, provider behavior, or user-visible workflows change.
 - Add positive and negative authorization tests for every protected operation.
-- Add failure-isolation, retry, idempotency, redaction, and relevant
-  architecture tests with behavior changes.
+- Add failure-isolation, retry, idempotency, redaction, and architecture tests
+  when those concerns are relevant to the changed behavior.
 - Do not describe planned functionality as implemented.
 - If a request conflicts with the product hard requirements, security model,
   provider policy, or an accepted ADR, stop and report the conflict. Do not
@@ -165,8 +233,10 @@ Before declaring work complete:
 2. Verify new behavior with both success and failure cases.
 3. Verify server-side authorization for every affected role.
 4. Check logs, errors, Debug output, and exports for secret leakage.
-5. Confirm duplicate inputs cannot produce duplicate posts.
-6. Confirm one destination failure cannot block another destination.
+5. When work affects idempotent actions, events, jobs, or publishing, confirm
+   duplicate inputs cannot duplicate effects.
+6. When work affects multiple destinations, confirm one destination failure
+   cannot block or roll back another destination.
 7. Search changed content for machine-specific paths, identities, addresses,
    credentials, and accidental secrets.
 8. Confirm documentation, tests, and ADRs reflect the final behavior.
@@ -216,14 +286,20 @@ The agent must never:
   Data Protection keys, or `.env` contents
 - weaken or bypass a required validation check
 
-Going forward, PRs should contain only a brief summary of what changed.
-Testing, security review, verification, and deferred work stay in the Codex
-session—not the PR.
-
 ## Pull request descriptions
 
 Keep pull request descriptions very brief.
 
-Only describe what the pull request changes. Do not include test results,
+Use:
+
+```markdown
+## Changes
+
+- Describe the first meaningful change.
+- Describe the second meaningful change when applicable.
+```
+
+Include only what the pull request changes. Do not include test results,
 verification commands, security-review details, implementation history,
-deferred work, or risk sections unless explicitly requested by the user.
+deferred work, risk sections, or checklist boilerplate unless explicitly
+requested by the user.
