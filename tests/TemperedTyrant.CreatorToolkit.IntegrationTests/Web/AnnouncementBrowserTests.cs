@@ -54,19 +54,51 @@ public sealed partial class AnnouncementBrowserTests
 
             string preservedBody = "Browser validation content";
             await page.Locator("#Title").FillAsync("   ");
-            await page.Locator("#Body").FillAsync(preservedBody);
+            await page.Locator("#MessageContent").FillAsync(preservedBody);
             await page.GetByRole(AriaRole.Button, new() { Name = "Save draft" }).ClickAsync();
             Assert.True(
                 await page.Locator("[data-valmsg-for='Title']").IsVisibleAsync());
             Assert.True(
                 FixedTimeEquals(
                     preservedBody,
-                    await page.Locator("#Body").InputValueAsync()));
+                    await page.Locator("#MessageContent").InputValueAsync()));
 
             string title = "Browser-managed draft";
             string body = "First browser paragraph\n\nSecond browser paragraph";
             await page.Locator("#Title").FillAsync(title);
-            await page.Locator("#Body").FillAsync(body);
+            await page.Locator("#MessageContent").FillAsync(body);
+            await page.GetByRole(AriaRole.Button, new() { Name = "Add images" }).ClickAsync();
+            Assert.Equal("true", await page.GetByRole(AriaRole.Button, new() { Name = "Add images" }).GetAttributeAsync("aria-expanded"));
+            Assert.True(await page.Locator("[data-image-panel]").EvaluateAsync<bool>("panel => document.activeElement === panel"));
+            await page.GetByRole(AriaRole.Button, new() { Name = "Close image controls" }).ClickAsync();
+            Assert.True(await page.GetByRole(AriaRole.Button, new() { Name = "Add images" }).EvaluateAsync<bool>("button => document.activeElement === button"));
+            await page.GetByRole(AriaRole.Button, new() { Name = "Add images" }).ClickAsync();
+            await page.Locator("#NewImages").SetInputFilesAsync(
+                [
+                    new FilePayload
+                    {
+                        Name = "first.png",
+                        MimeType = "image/png",
+                        Buffer = Convert.FromBase64String(
+                            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="),
+                    },
+                    new FilePayload
+                    {
+                        Name = "second.gif",
+                        MimeType = "image/gif",
+                        Buffer = Convert.FromBase64String(
+                            "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="),
+                    },
+                ]);
+            Assert.Equal(2, await page.Locator(".unsaved-media").CountAsync());
+            await page.WaitForFunctionAsync(
+                "() => [...document.querySelectorAll('.unsaved-media img')].every(image => image.src.startsWith('blob:'))");
+            Assert.All(
+                await page.Locator(".unsaved-media img").EvaluateAllAsync<string[]>("images => images.map(image => image.src)"),
+                source => Assert.StartsWith("blob:", source, StringComparison.Ordinal));
+            await page.Locator("select[name='NewImagePresentations[0]']").SelectOptionAsync("FeaturedImage");
+            await page.Locator("input[type='checkbox'][name='NewImageSpoilers[0]']").CheckAsync();
+            await page.Locator("input[name='NewImageAltTexts[0]']").FillAsync("Browser image alt");
             await Task.WhenAll(
                 page.WaitForURLAsync("**/Announcements/*?notice=created"),
                 page.GetByRole(AriaRole.Button, new() { Name = "Save draft" }).ClickAsync());
@@ -76,10 +108,14 @@ public sealed partial class AnnouncementBrowserTests
                     body,
                     ((await page.Locator(".announcement-body").TextContentAsync())!)
                         .Replace("\r\n", "\n", StringComparison.Ordinal)));
+            Assert.Equal(2, await page.Locator(".composer-media img").CountAsync());
 
             await page.GetByRole(AriaRole.Link, new() { Name = "Edit draft" }).ClickAsync();
             string editedTitle = "Edited browser draft";
             await page.Locator("#Title").FillAsync(editedTitle);
+            Assert.Equal(2, await page.Locator("[data-saved-media]").CountAsync());
+            await page.Locator("input[name='ExistingMedia[0].AltText']").FillAsync("Updated browser alt");
+            await page.Locator("[data-saved-media]").Nth(1).GetByRole(AriaRole.Button, new() { Name = "Move saved image left" }).ClickAsync();
             await Task.WhenAll(
                 page.WaitForURLAsync("**/Announcements/*?notice=updated"),
                 page.GetByRole(AriaRole.Button, new() { Name = "Save changes" }).ClickAsync());

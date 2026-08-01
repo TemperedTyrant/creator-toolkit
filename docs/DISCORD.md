@@ -49,10 +49,12 @@ publication in SQLite and redirects to Publish History. The publication worker
 revalidates the bot installation, channel identity, enabled state, and
 effective channel permissions before every delivery attempt.
 
-Choose either:
+The compact publication composer begins with the announcement's one stored
+Markdown message. Its internal title is labeled as not sent and is never added
+to a Discord message or embed. Choose either:
 
 - a plain Discord message of at most 2,000 Unicode characters; or
-- one rich embed with optional message text, title (256), description (4,096),
+- one rich embed using the same message as its description, with optional
   HTTPS title link, color, footer (2,048), HTTPS image, and HTTPS thumbnail. The
   total embed text limit is 6,000 characters.
 
@@ -75,16 +77,16 @@ cannot use mass mentions.
 
 ## Images and delivery
 
-One optional JPEG, PNG, WebP, or GIF of at most 8 MiB can be uploaded for the
-current publication. Creator Toolkit checks the extension, media type, and file
-signature, generates the outbound filename, supports alt text, and can mark an
-uploaded attachment as a Discord spoiler. Before confirmation, uploaded bytes
-remain only in the bounded, short-lived in-process review store. After a
-successful enqueue, the reviewed message snapshot and image are encrypted and
-stored in SQLite so pending work survives restart. They are never stored as
-plaintext files, session state, diagnostics, audit, or logs.
+Up to four JPEG, PNG, WebP, or GIF images totaling at most 8 MiB can be saved
+with a draft. Creator Toolkit checks extension, media type, and file signature,
+generates outbound filenames, supports alt text and spoilers, and permits one
+featured image. Draft image bytes are encrypted in SQLite and survive restart;
+they are never stored as plaintext files, session state, diagnostics, audit, or
+logs. Confirmation copies the selected images into the separate immutable,
+encrypted publication snapshot, so later draft edits cannot alter queued work.
 
-Alternatively, provide one absolute HTTPS image URL without credentials.
+The advanced publication options may instead provide one absolute HTTPS image
+URL without credentials when no stored images are selected.
 Creator Toolkit passes an accepted URL to Discord and never fetches it, so it
 does not act as an image proxy or application-side SSRF fetcher. Remote images
 cannot be marked as spoiler images.

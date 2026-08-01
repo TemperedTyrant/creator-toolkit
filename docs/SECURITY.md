@@ -190,6 +190,14 @@ all destination deliveries become terminal; safe history never exposes their
 content. Database and key-ring backups must remain coordinated so pending work
 can recover after restart.
 
+Saved announcement images use a separate media-specific Data Protection purpose
+rooted in the announcement and media identifiers. SQLite contains ciphertext,
+validated format metadata, length, and digest; Creator Toolkit writes no
+plaintext media files. Authenticated announcement viewers receive bounded
+private/no-store previews with `nosniff`. Draft media remains until an authorized
+edit removes it or the announcement is deleted, and it is copied into a separate
+immutable protected publication snapshot at enqueue time.
+
 A secret may be:
 
 - accepted over a protected form;

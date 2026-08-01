@@ -55,6 +55,10 @@ public enum AuditEventCode
     PublicationDeliveryCancelled = 41,
     PublicationFinalized = 42,
     PublicationPayloadRemoved = 43,
+    AnnouncementMediaAdded = 44,
+    AnnouncementMediaRemoved = 45,
+    AnnouncementMediaReordered = 46,
+    AnnouncementMediaMetadataChanged = 47,
 }
 
 public enum AuditOutcome

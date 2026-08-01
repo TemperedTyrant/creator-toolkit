@@ -166,7 +166,7 @@ internal sealed class DiscordHttpApi(HttpClient httpClient) : IDiscordApi
         string token,
         string channelId,
         DiscordMessageRequest request,
-        DiscordValidatedImage? image,
+        IReadOnlyList<DiscordValidatedImage> images,
         CancellationToken cancellationToken)
     {
         try
@@ -175,7 +175,7 @@ internal sealed class DiscordHttpApi(HttpClient httpClient) : IDiscordApi
                 token,
                 channelId,
                 request,
-                image,
+                images,
                 cancellationToken);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -192,7 +192,7 @@ internal sealed class DiscordHttpApi(HttpClient httpClient) : IDiscordApi
         string token,
         string channelId,
         DiscordMessageRequest request,
-        DiscordValidatedImage? image,
+        IReadOnlyList<DiscordValidatedImage> images,
         CancellationToken cancellationToken)
     {
         DiscordSnowflake.Require(channelId);
@@ -200,7 +200,7 @@ internal sealed class DiscordHttpApi(HttpClient httpClient) : IDiscordApi
             HttpMethod.Post,
             $"channels/{channelId}/messages");
         SetAuthorization(message, token);
-        if (image is null)
+        if (images.Count == 0)
         {
             message.Content = JsonContent.Create(request, options: JsonOptions);
         }
@@ -213,9 +213,13 @@ internal sealed class DiscordHttpApi(HttpClient httpClient) : IDiscordApi
                     Encoding.UTF8,
                     "application/json"),
                 "payload_json");
-            ByteArrayContent file = new(image.Bytes);
-            file.Headers.ContentType = MediaTypeHeaderValue.Parse(image.ContentType);
-            multipart.Add(file, "files[0]", image.OutboundFileName);
+            for (int index = 0; index < images.Count; index++)
+            {
+                DiscordValidatedImage image = images[index];
+                ByteArrayContent file = new(image.Bytes);
+                file.Headers.ContentType = MediaTypeHeaderValue.Parse(image.ContentType);
+                multipart.Add(file, $"files[{index}]", image.OutboundFileName);
+            }
             message.Content = multipart;
         }
 

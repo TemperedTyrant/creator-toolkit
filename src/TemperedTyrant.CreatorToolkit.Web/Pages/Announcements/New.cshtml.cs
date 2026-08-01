@@ -9,7 +9,8 @@ using TemperedTyrant.CreatorToolkit.Web.Security;
 namespace TemperedTyrant.CreatorToolkit.Web.Pages.Announcements;
 
 [Authorize(Policy = AuthorizationPolicies.ContentEditing)]
-[SensitiveSecurityHeaderProfile]
+[SensitiveScriptSecurityHeaderProfile]
+[RequestSizeLimit(9 * 1024 * 1024)]
 public sealed class NewModel(IAnnouncementService announcementService) : PageModel
 {
     [BindProperty]
@@ -19,7 +20,22 @@ public sealed class NewModel(IAnnouncementService announcementService) : PageMod
     public string Title { get; set; } = string.Empty;
 
     [BindProperty]
-    public string Body { get; set; } = string.Empty;
+    public string MessageContent { get; set; } = string.Empty;
+
+    [BindProperty]
+    public List<IFormFile> NewImages { get; set; } = [];
+
+    [BindProperty]
+    public List<string?> NewImageAltTexts { get; set; } = [];
+
+    [BindProperty]
+    public List<bool> NewImageSpoilers { get; set; } = [];
+
+    [BindProperty]
+    public List<AnnouncementMediaPresentation> NewImagePresentations { get; set; } = [];
+
+    [BindProperty]
+    public List<int> NewImageSortOrders { get; set; } = [];
 
     public void OnGet()
     {
@@ -40,28 +56,50 @@ public sealed class NewModel(IAnnouncementService announcementService) : PageMod
             return Page();
         }
 
-        AnnouncementOperationResult result = await announcementService.CreateAsync(
-            AnnouncementId,
-            Title,
-            Body,
-            actorUserId.Value,
-            cancellationToken);
-        if (result.Status is AnnouncementOperationStatus.Succeeded
-            or AnnouncementOperationStatus.DuplicateSubmission)
+        IReadOnlyList<AnnouncementMediaUpload> uploads = [];
+        try
         {
-            return RedirectToPage(
-                "/Announcements/Details",
-                new { id = result.AnnouncementId, notice = "created" });
-        }
+            uploads = await AnnouncementMediaForm.ReadUploadsAsync(
+                NewImages,
+                NewImageAltTexts,
+                NewImageSpoilers,
+                NewImagePresentations,
+                NewImageSortOrders,
+                0,
+                cancellationToken);
+            AnnouncementOperationResult result = await announcementService.CreateAsync(
+                AnnouncementId,
+                Title,
+                MessageContent,
+                actorUserId.Value,
+                uploads,
+                cancellationToken);
+            if (result.Status is AnnouncementOperationStatus.Succeeded
+                or AnnouncementOperationStatus.DuplicateSubmission)
+            {
+                return RedirectToPage(
+                    "/Announcements/Details",
+                    new { id = result.AnnouncementId, notice = "created" });
+            }
 
-        if (result.Status == AnnouncementOperationStatus.ValidationFailed)
-        {
-            AddValidationErrors(result.ValidationErrors);
+            if (result.Status == AnnouncementOperationStatus.ValidationFailed)
+            {
+                AddValidationErrors(result.ValidationErrors);
+                return Page();
+            }
+
+            ModelState.AddModelError(string.Empty, "The draft could not be created.");
             return Page();
         }
-
-        ModelState.AddModelError(string.Empty, "The draft could not be created.");
-        return Page();
+        catch (AnnouncementMediaFormException exception)
+        {
+            ModelState.AddModelError("Media", exception.Message);
+            return Page();
+        }
+        finally
+        {
+            AnnouncementMediaForm.Zero(uploads);
+        }
     }
 
     private void AddValidationErrors(

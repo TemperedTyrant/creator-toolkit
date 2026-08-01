@@ -11,6 +11,7 @@ public sealed class DatabaseMigrationTests
     private static readonly string[] ExpectedApplicationTables =
     [
         "AuditRecords",
+        "AnnouncementMediaAssets",
         "Announcements",
         "DiagnosticRecords",
         "DiscordConnections",
@@ -207,6 +208,39 @@ public sealed class DatabaseMigrationTests
             Assert.Empty(await current.PublicationAttempts.ToListAsync());
             Assert.False(current.Database.HasPendingModelChanges());
         }
+    }
+
+    [Fact]
+    public async Task AddAnnouncementMediaMigratesCheckpoint14WithoutChangingExistingData()
+    {
+        using TestDataDirectory data = new();
+        await using ServiceProvider provider = TestServices.Create(data.Path);
+        IDbContextFactory<CreatorToolkitDbContext> contextFactory =
+            provider.GetRequiredService<IDbContextFactory<CreatorToolkitDbContext>>();
+
+        await using (CreatorToolkitDbContext previous = await contextFactory.CreateDbContextAsync())
+        {
+            await previous.Database.MigrateAsync("20260801075002_AddDurablePublications");
+            await previous.Database.ExecuteSqlRawAsync(
+                """
+                INSERT INTO Announcements
+                    (Id, Title, Body, Status, CreatedAtUtc, UpdatedAtUtc,
+                     CreatedByUserId, UpdatedByUserId, Revision)
+                VALUES
+                    ('4171a115-93cd-4dfd-b8a1-1c80426a8df6', 'Internal title', 'Existing Markdown', 'Draft',
+                     1785542400000, 1785542400000,
+                     'd31a6b8d-e6f8-4e3d-994c-5d876789d080',
+                     'd31a6b8d-e6f8-4e3d-994c-5d876789d080', 1);
+                """);
+        }
+
+        await using CreatorToolkitDbContext current = await contextFactory.CreateDbContextAsync();
+        await current.Database.MigrateAsync();
+        var existing = await current.Announcements.AsNoTracking().SingleAsync();
+        Assert.Equal("Internal title", existing.Title);
+        Assert.Equal("Existing Markdown", existing.MessageContent);
+        Assert.Empty(await current.AnnouncementMediaAssets.ToListAsync());
+        Assert.False(current.Database.HasPendingModelChanges());
     }
 
     [Fact]

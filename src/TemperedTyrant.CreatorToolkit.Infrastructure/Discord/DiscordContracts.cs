@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using TemperedTyrant.CreatorToolkit.Core.Announcements;
 
 namespace TemperedTyrant.CreatorToolkit.Infrastructure.Discord;
 
@@ -266,7 +267,20 @@ public sealed record DiscordPublishRequest(
     DiscordMentionSelection Mentions,
     bool MassMentionConfirmed,
     string? RemoteImageUrl,
-    DiscordValidatedImage? UploadedImage);
+    DiscordValidatedImage? UploadedImage,
+    IReadOnlyList<DiscordValidatedImage>? StoredImages = null,
+    IReadOnlyList<Guid>? AnnouncementMediaIds = null)
+{
+    [JsonIgnore]
+    public IReadOnlyList<DiscordValidatedImage> Images =>
+        StoredImages is { Count: > 0 }
+            ? UploadedImage is null
+                ? StoredImages
+                : [.. StoredImages, UploadedImage]
+            : UploadedImage is null
+                ? []
+                : [UploadedImage];
+}
 
 public enum DiscordDeliveryStatus
 {
@@ -333,10 +347,11 @@ public sealed class DiscordPublicationValidationException(string message) : Exce
 public sealed record DiscordPublishContext(
     Guid AnnouncementId,
     string AnnouncementTitle,
-    string AnnouncementBody,
+    string MessageContent,
     long AnnouncementRevision,
     IReadOnlyList<DiscordConnectionListItem> Connections,
-    IReadOnlyList<DiscordDestinationListItem> Destinations);
+    IReadOnlyList<DiscordDestinationListItem> Destinations,
+    IReadOnlyList<AnnouncementMediaSummary> Media);
 
 internal sealed record DiscordMessageRequest(
     [property: JsonPropertyName("content")]
@@ -421,7 +436,7 @@ internal interface IDiscordApi
         string token,
         string channelId,
         DiscordMessageRequest request,
-        DiscordValidatedImage? image,
+        IReadOnlyList<DiscordValidatedImage> images,
         CancellationToken cancellationToken);
 }
 

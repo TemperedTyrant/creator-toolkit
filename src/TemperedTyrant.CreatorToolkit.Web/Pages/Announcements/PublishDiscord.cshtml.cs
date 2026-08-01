@@ -50,6 +50,9 @@ public sealed class PublishDiscordModel(
     public string? PlainContent { get; set; }
 
     [BindProperty]
+    public string? MessageContent { get; set; }
+
+    [BindProperty]
     public bool ShowLinkPreviews { get; set; } = true;
 
     [BindProperty]
@@ -104,6 +107,9 @@ public sealed class PublishDiscordModel(
     public IReadOnlyList<string> UserIds { get; set; } = [];
 
     [BindProperty]
+    public IReadOnlyList<Guid> SelectedMediaIds { get; set; } = [];
+
+    [BindProperty]
     public string? ManualUserId { get; set; }
 
     [BindProperty]
@@ -146,9 +152,11 @@ public sealed class PublishDiscordModel(
 
         SubmissionId = Guid.NewGuid();
         AnnouncementRevision = Context!.AnnouncementRevision;
-        PlainContent = $"**{Context.AnnouncementTitle}**\n\n{Context.AnnouncementBody}";
-        EmbedTitle = Context.AnnouncementTitle;
-        EmbedDescription = Context.AnnouncementBody;
+        MessageContent = Context.MessageContent;
+        PlainContent = Context.MessageContent;
+        EmbedTitle = null;
+        EmbedDescription = Context.MessageContent;
+        SelectedMediaIds = Context.Media.Select(value => value.Id).ToArray();
         return Page();
     }
 
@@ -315,6 +323,11 @@ public sealed class PublishDiscordModel(
         ModelState.Remove(nameof(ReviewComplete));
         ModelState.Remove(nameof(ReviewToken));
         ModelState.Remove(nameof(FinalConfirmation));
+        if (Request.Headers["X-Creator-Toolkit-Partial"] == "publication-review")
+        {
+            return ReviewPartialResponse(stagedUpload);
+        }
+
         return Page();
     }
 
@@ -453,12 +466,12 @@ public sealed class PublishDiscordModel(
             GuildId,
             DestinationIds,
             Mode,
-            PlainContent,
+            MessageContent ?? PlainContent ?? EmbedDescription,
             ShowLinkPreviews,
             new DiscordEmbedInput(
-                EmbedMessageText,
-                EmbedTitle,
-                EmbedDescription,
+                null,
+                null,
+                MessageContent ?? PlainContent ?? EmbedDescription,
                 EmbedTitleUrl,
                 EmbedColor,
                 EmbedFooter,
@@ -467,7 +480,8 @@ public sealed class PublishDiscordModel(
             new DiscordMentionSelection(MentionEveryone, MentionHere, RoleIds, users),
             MassMentionConfirmed,
             RemoteImageUrl,
-            image);
+            image,
+            AnnouncementMediaIds: SelectedMediaIds);
     }
 
     private async Task<IActionResult> SearchMembersPartialAsync(CancellationToken cancellationToken)
@@ -698,11 +712,8 @@ public sealed class PublishDiscordModel(
             GuildId,
             DestinationIds = DestinationIds.Order().ToArray(),
             Mode,
-            PlainContent,
+            MessageContent = MessageContent ?? PlainContent ?? EmbedDescription,
             ShowLinkPreviews,
-            EmbedMessageText,
-            EmbedTitle,
-            EmbedDescription,
             EmbedTitleUrl,
             EmbedColor,
             EmbedFooter,
@@ -713,6 +724,7 @@ public sealed class PublishDiscordModel(
             ImageSpoiler,
             ImageInEmbed,
             HasUploadedImage = hasUploadedImage,
+            SelectedMediaIds = SelectedMediaIds.Order().ToArray(),
             MentionEveryone,
             MentionHere,
             RoleIds = RoleIds.Order(StringComparer.Ordinal).ToArray(),
@@ -720,7 +732,15 @@ public sealed class PublishDiscordModel(
             ManualUserId,
             MassMentionConfirmed,
         };
-        return SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(reviewed));
+        byte[] serialized = JsonSerializer.SerializeToUtf8Bytes(reviewed);
+        try
+        {
+            return SHA256.HashData(serialized);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(serialized);
+        }
     }
 
     private DiscordEphemeralUploadBinding UploadBinding(Guid actorUserId) => new(
@@ -740,6 +760,48 @@ public sealed class PublishDiscordModel(
         ReviewImageByteSize = image?.ByteSize;
         ReviewImageSafeFileName = image?.SafeFileName;
         ReviewImageHasAltText = image?.HasAltText ?? false;
+    }
+
+    private JsonResult ReviewPartialResponse(DiscordStagedUpload? stagedUpload)
+    {
+        object[] media = Context?.Media
+            .Where(value => SelectedMediaIds.Contains(value.Id))
+            .OrderBy(value => value.SortOrder)
+            .Select(value => (object)new
+            {
+                id = value.Id,
+                contentType = value.ContentType,
+                byteLength = value.ByteLength,
+                altText = value.AltText,
+                spoiler = value.IsSpoiler,
+                featured = value.Presentation
+                    == TemperedTyrant.CreatorToolkit.Core.Announcements.AnnouncementMediaPresentation.FeaturedImage,
+            })
+            .ToArray() ?? [];
+        string[] errors = ModelState.Values
+            .SelectMany(value => value.Errors)
+            .Select(value => value.ErrorMessage)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        return new JsonResult(new
+        {
+            status = ReviewComplete ? "ok" : "invalid",
+            reviewComplete = ReviewComplete,
+            reviewToken = ReviewComplete ? ReviewToken : null,
+            errors,
+            storedImages = media,
+            oneTimeImage = stagedUpload is null
+                ? null
+                : new
+                {
+                    format = stagedUpload.Format,
+                    byteSize = stagedUpload.ByteSize,
+                    spoiler = stagedUpload.Spoiler,
+                    featured = stagedUpload.EmbedPlacement,
+                    hasAltText = stagedUpload.HasAltText,
+                },
+        });
     }
 
     private sealed record ReviewState(string Fingerprint, string? UploadHandle);

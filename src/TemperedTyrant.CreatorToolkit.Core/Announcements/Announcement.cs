@@ -5,7 +5,7 @@ namespace TemperedTyrant.CreatorToolkit.Core.Announcements;
 public sealed class Announcement
 {
     public const int MaximumTitleScalarCount = 200;
-    public const int MaximumBodyScalarCount = 10_000;
+    public const int MaximumMessageContentScalarCount = 10_000;
 
     private Announcement()
     {
@@ -15,7 +15,7 @@ public sealed class Announcement
 
     public string Title { get; private set; } = string.Empty;
 
-    public string Body { get; private set; } = string.Empty;
+    public string MessageContent { get; private set; } = string.Empty;
 
     public AnnouncementStatus Status { get; private set; }
 
@@ -29,17 +29,19 @@ public sealed class Announcement
 
     public long Revision { get; private set; }
 
+    public ICollection<AnnouncementMediaAsset> Media { get; private set; } = [];
+
     public static AnnouncementCreationResult Create(
         Guid id,
         string? title,
-        string? body,
+        string? messageContent,
         Guid actorUserId,
         DateTimeOffset occurredAtUtc)
     {
         ArgumentOutOfRangeException.ThrowIfEqual(id, Guid.Empty);
         ArgumentOutOfRangeException.ThrowIfEqual(actorUserId, Guid.Empty);
 
-        AnnouncementContentValidation validation = ValidateContent(title, body);
+        AnnouncementContentValidation validation = ValidateContent(title, messageContent);
         if (validation.Errors.Count > 0)
         {
             return AnnouncementCreationResult.ValidationFailed(validation.Errors);
@@ -51,7 +53,7 @@ public sealed class Announcement
             {
                 Id = id,
                 Title = validation.Title,
-                Body = validation.Body,
+                MessageContent = validation.MessageContent,
                 Status = AnnouncementStatus.Draft,
                 CreatedAtUtc = utc,
                 UpdatedAtUtc = utc,
@@ -63,7 +65,7 @@ public sealed class Announcement
 
     public AnnouncementDomainResult Update(
         string? title,
-        string? body,
+        string? messageContent,
         long expectedRevision,
         Guid actorUserId,
         DateTimeOffset occurredAtUtc)
@@ -78,14 +80,14 @@ public sealed class Announcement
             return AnnouncementDomainResult.InvalidTransition();
         }
 
-        AnnouncementContentValidation validation = ValidateContent(title, body);
+        AnnouncementContentValidation validation = ValidateContent(title, messageContent);
         if (validation.Errors.Count > 0)
         {
             return AnnouncementDomainResult.ValidationFailed(validation.Errors);
         }
 
         Title = validation.Title;
-        Body = validation.Body;
+        MessageContent = validation.MessageContent;
         RecordMutation(actorUserId, occurredAtUtc);
         return AnnouncementDomainResult.Succeeded();
     }
@@ -132,10 +134,10 @@ public sealed class Announcement
 
     private static AnnouncementContentValidation ValidateContent(
         string? title,
-        string? body)
+        string? messageContent)
     {
         string normalizedTitle = title?.Trim() ?? string.Empty;
-        string preservedBody = body ?? string.Empty;
+        string preservedMessageContent = messageContent ?? string.Empty;
         List<AnnouncementValidationError> errors = [];
 
         ValidateRequiredPlainText(
@@ -146,14 +148,14 @@ public sealed class Announcement
             $"The title must be {MaximumTitleScalarCount} Unicode characters or fewer.",
             errors);
         ValidateRequiredPlainText(
-            preservedBody,
-            nameof(Body),
-            MaximumBodyScalarCount,
+            preservedMessageContent,
+            nameof(MessageContent),
+            MaximumMessageContentScalarCount,
             "Enter announcement content.",
-            $"The announcement content must be {MaximumBodyScalarCount:N0} Unicode characters or fewer.",
+            $"The announcement content must be {MaximumMessageContentScalarCount:N0} Unicode characters or fewer.",
             errors);
 
-        return new AnnouncementContentValidation(normalizedTitle, preservedBody, errors);
+        return new AnnouncementContentValidation(normalizedTitle, preservedMessageContent, errors);
     }
 
     private static void ValidateRequiredPlainText(
@@ -193,7 +195,7 @@ public sealed class Announcement
 
     private sealed record AnnouncementContentValidation(
         string Title,
-        string Body,
+        string MessageContent,
         IReadOnlyList<AnnouncementValidationError> Errors);
 }
 

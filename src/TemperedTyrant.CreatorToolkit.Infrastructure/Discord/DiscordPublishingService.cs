@@ -1,8 +1,10 @@
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using TemperedTyrant.CreatorToolkit.Core.Announcements;
 using TemperedTyrant.CreatorToolkit.Core.Audit;
 using TemperedTyrant.CreatorToolkit.Core.Publications;
 using TemperedTyrant.CreatorToolkit.Core.Security;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Announcements;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Publications;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Security;
@@ -15,6 +17,7 @@ internal sealed class DiscordPublishingService(
     IDiscordApi discordApi,
     IAuditWriter auditWriter,
     PublicationPayloadProtector payloadProtector,
+    AnnouncementMediaProtector mediaProtector,
     TimeProvider timeProvider) : IDiscordPublishingService
 {
     public async Task<DiscordPublishContext?> GetContextAsync(
@@ -27,13 +30,23 @@ internal sealed class DiscordPublishingService(
             .Select(value => new AnnouncementDetails(
                 value.Id,
                 value.Title,
-                value.Body,
+                value.MessageContent,
                 value.Status,
                 value.CreatedAtUtc,
                 value.UpdatedAtUtc,
                 value.CreatedByUserId,
                 value.UpdatedByUserId,
-                value.Revision))
+                value.Revision,
+                value.Media.OrderBy(media => media.SortOrder).Select(media => new AnnouncementMediaSummary(
+                    media.Id,
+                    media.SortOrder,
+                    media.ContentType,
+                    media.ByteLength,
+                    media.GeneratedFileName,
+                    media.AltText,
+                    media.IsSpoiler,
+                    media.Presentation,
+                    media.Revision)).ToArray()))
             .SingleOrDefaultAsync(cancellationToken);
         if (announcement is null || announcement.Status != AnnouncementStatus.Draft)
         {
@@ -73,10 +86,11 @@ internal sealed class DiscordPublishingService(
         return new DiscordPublishContext(
             announcement.Id,
             announcement.Title,
-            announcement.Body,
+            announcement.MessageContent,
             announcement.Revision,
             connections,
-            destinations);
+            destinations,
+            announcement.Media);
     }
 
     public async Task<IReadOnlyList<DiscordGuildMember>> SearchMembersAsync(
@@ -133,7 +147,15 @@ internal sealed class DiscordPublishingService(
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(discovery);
         ValidateRequestShape(request, canUseMassMentions);
-        _ = BuildMessage(request, request.Mentions.Build());
+        DiscordPublishRequest hydrated = await HydrateStoredMediaAsync(request, cancellationToken);
+        try
+        {
+            _ = BuildMessage(hydrated, hydrated.Mentions.Build());
+        }
+        finally
+        {
+            ZeroHydratedImages(request, hydrated);
+        }
         if (!string.Equals(discovery.Guild.Id, request.GuildId, StringComparison.Ordinal))
         {
             throw new DiscordPublicationValidationException(
@@ -166,13 +188,13 @@ internal sealed class DiscordPublishingService(
             }
 
             if (request.Mode == DiscordMessageMode.Embed && !channel.CanEmbed
-                || request.UploadedImage is not null && !channel.CanAttach)
+                || hydrated.Images.Count > 0 && !channel.CanAttach)
             {
                 throw new DiscordPublicationValidationException(
                     "The selected Discord channels no longer support the reviewed message.");
             }
 
-            _ = ValidateLiveMentions(request, channel, discovery.Roles);
+            _ = ValidateLiveMentions(hydrated, channel, discovery.Roles);
         }
 
         DiscordConnection? connection = await GetConnectionAsync(
@@ -249,32 +271,43 @@ internal sealed class DiscordPublishingService(
                 "One or more selected Discord destinations are unavailable or belong to another server.");
         }
 
-        _ = BuildMessage(request, request.Mentions.Build());
+        DiscordPublishRequest snapshot = await HydrateStoredMediaAsync(request, cancellationToken);
         DateTimeOffset now = timeProvider.GetUtcNow();
         Guid publicationId = Guid.NewGuid();
-        Publication publication = Publication.Create(
-            publicationId,
-            request.AnnouncementId,
-            request.AnnouncementRevision,
-            request.SubmissionId,
-            actorUserId,
-            destinations.Length,
-            now);
-        dbContext.Publications.Add(publication);
-        foreach (DiscordDestination destination in destinations)
+        PublicationPayload protectedPayload;
+        try
         {
-            dbContext.PublicationDeliveries.Add(PublicationDelivery.Create(
-                Guid.NewGuid(),
+            _ = BuildMessage(snapshot, snapshot.Mentions.Build());
+            Publication publication = Publication.Create(
                 publicationId,
-                destination.Id,
-                destination.ChannelId,
-                destination.GuildNameSnapshot,
-                destination.ChannelNameSnapshot,
-                DiscordNonce.Create(request.SubmissionId, destination.ChannelId),
-                now));
+                request.AnnouncementId,
+                request.AnnouncementRevision,
+                request.SubmissionId,
+                actorUserId,
+                destinations.Length,
+                now);
+            dbContext.Publications.Add(publication);
+            foreach (DiscordDestination destination in destinations)
+            {
+                dbContext.PublicationDeliveries.Add(PublicationDelivery.Create(
+                    Guid.NewGuid(),
+                    publicationId,
+                    destination.Id,
+                    destination.ChannelId,
+                    destination.GuildNameSnapshot,
+                    destination.ChannelNameSnapshot,
+                    DiscordNonce.Create(request.SubmissionId, destination.ChannelId),
+                    now));
+            }
+
+            protectedPayload = payloadProtector.Protect(publicationId, snapshot, now);
+        }
+        finally
+        {
+            ZeroHydratedImages(request, snapshot);
         }
 
-        dbContext.PublicationPayloads.Add(payloadProtector.Protect(publicationId, request, now));
+        dbContext.PublicationPayloads.Add(protectedPayload);
         await auditWriter.WriteAsync(
             new AuditEvent(AuditEventCode.PublicationQueued, AuditOutcome.Succeeded, actorUserId),
             cancellationToken);
@@ -347,6 +380,125 @@ internal sealed class DiscordPublishingService(
         {
             DiscordSnowflake.Require(snowflake);
         }
+
+        if (request.Images.Count > AnnouncementMediaAsset.MaximumAssetCount)
+        {
+            throw new DiscordPublicationValidationException("Select no more than four images.");
+        }
+
+        if (request.Images.Sum(value => (long)value.Bytes.Length)
+                > AnnouncementMediaAsset.MaximumCombinedBytes)
+        {
+            throw new DiscordPublicationValidationException(
+                "Selected images must be no larger than 8 MiB combined.");
+        }
+
+        if (request.Images.Count(value => value.EmbedPlacement) > 1)
+        {
+            throw new DiscordPublicationValidationException(
+                "Select no more than one Featured image.");
+        }
+    }
+
+    private async Task<DiscordPublishRequest> HydrateStoredMediaAsync(
+        DiscordPublishRequest request,
+        CancellationToken cancellationToken)
+    {
+        Guid[] requestedIds = request.AnnouncementMediaIds?.Distinct().ToArray() ?? [];
+        if (requestedIds.Length == 0)
+        {
+            return request;
+        }
+
+        if (requestedIds.Length > AnnouncementMediaAsset.MaximumAssetCount
+            || requestedIds.Length != request.AnnouncementMediaIds!.Count
+            || request.StoredImages is { Count: > 0 })
+        {
+            throw new DiscordPublicationValidationException(
+                "The selected announcement images are invalid.");
+        }
+
+        AnnouncementMediaAsset[] media = await dbContext.AnnouncementMediaAssets
+            .AsNoTracking()
+            .Where(value => requestedIds.Contains(value.Id)
+                && value.AnnouncementId == request.AnnouncementId)
+            .OrderBy(value => value.SortOrder)
+            .ThenBy(value => value.Id)
+            .ToArrayAsync(cancellationToken);
+        if (media.Length != requestedIds.Length)
+        {
+            throw new DiscordPublicationValidationException(
+                "One or more selected announcement images are unavailable.");
+        }
+
+        long combinedBytes = media.Sum(value => (long)value.ByteLength)
+            + (request.UploadedImage?.Bytes.LongLength ?? 0);
+        int combinedCount = media.Length + (request.UploadedImage is null ? 0 : 1);
+        int featuredCount = media.Count(value =>
+                value.Presentation == AnnouncementMediaPresentation.FeaturedImage)
+            + (request.UploadedImage?.EmbedPlacement == true ? 1 : 0);
+        if (combinedBytes > AnnouncementMediaAsset.MaximumCombinedBytes
+            || combinedCount > AnnouncementMediaAsset.MaximumAssetCount
+            || featuredCount > 1)
+        {
+            throw new DiscordPublicationValidationException(combinedCount > AnnouncementMediaAsset.MaximumAssetCount
+                ? "Select no more than four stored and one-time images combined."
+                : combinedBytes > AnnouncementMediaAsset.MaximumCombinedBytes
+                    ? "Selected stored and one-time images must be no larger than 8 MiB combined."
+                    : "Select no more than one Featured image.");
+        }
+
+        var images = new List<DiscordValidatedImage>(media.Length);
+        try
+        {
+            foreach (AnnouncementMediaAsset asset in media)
+            {
+                images.Add(new DiscordValidatedImage(
+                    mediaProtector.Unprotect(asset),
+                    asset.GeneratedFileName,
+                    asset.ContentType,
+                    asset.AltText,
+                    asset.IsSpoiler,
+                    asset.Presentation == AnnouncementMediaPresentation.FeaturedImage));
+            }
+
+            return request with
+            {
+                StoredImages = images,
+                AnnouncementMediaIds = [],
+            };
+        }
+        catch (AnnouncementMediaUnavailableException)
+        {
+            foreach (DiscordValidatedImage image in images)
+            {
+                CryptographicOperations.ZeroMemory(image.Bytes);
+            }
+
+            throw new DiscordPublicationValidationException(
+                "A selected announcement image could not be read safely.");
+        }
+    }
+
+    private static void ZeroHydratedImages(
+        DiscordPublishRequest original,
+        DiscordPublishRequest hydrated)
+    {
+        if (ReferenceEquals(original, hydrated))
+        {
+            return;
+        }
+
+        byte[][] originalBytes = original.Images
+            .Select(value => value.Bytes)
+            .ToArray();
+        foreach (DiscordValidatedImage image in hydrated.Images)
+        {
+            if (!originalBytes.Any(value => ReferenceEquals(value, image.Bytes)))
+            {
+                CryptographicOperations.ZeroMemory(image.Bytes);
+            }
+        }
     }
 
     internal static DiscordMentionBuildResult ValidateLiveMentions(
@@ -380,10 +532,16 @@ internal sealed class DiscordPublishingService(
         DiscordPublishRequest request,
         DiscordMentionBuildResult mentions)
     {
-        if (request.UploadedImage is not null && !string.IsNullOrWhiteSpace(request.RemoteImageUrl))
+        if (request.Images.Count > 0 && !string.IsNullOrWhiteSpace(request.RemoteImageUrl))
         {
             throw new DiscordPublicationValidationException(
                 "Choose either an uploaded image or a remote HTTPS image URL, not both.");
+        }
+
+        if (request.Images.Count(value => value.EmbedPlacement) > 1)
+        {
+            throw new DiscordPublicationValidationException(
+                "Only one image can be the featured image.");
         }
 
         Uri? remoteImage = DiscordMessageValidation.OptionalHttpsUri(
@@ -399,13 +557,13 @@ internal sealed class DiscordPublishingService(
                     : mentions.VisiblePrefix + "\n" + content;
         }
 
-        IReadOnlyList<DiscordAttachmentPayload>? attachments = request.UploadedImage is null
+        IReadOnlyList<DiscordAttachmentPayload>? attachments = request.Images.Count == 0
             ? null
-            : [new DiscordAttachmentPayload(
-                0,
-                request.UploadedImage.OutboundFileName,
-                request.UploadedImage.AltText,
-                request.UploadedImage.Spoiler)];
+            : request.Images.Select((image, index) => new DiscordAttachmentPayload(
+                index,
+                image.OutboundFileName,
+                image.AltText,
+                image.Spoiler)).ToArray();
         if (request.Mode == DiscordMessageMode.Plain)
         {
             string content = Prefix(request.PlainContent);
@@ -420,7 +578,7 @@ internal sealed class DiscordPublishingService(
                 content,
                 DiscordMessageValidation.MaximumMessageLength,
                 "Message content");
-            if (string.IsNullOrWhiteSpace(content) && request.UploadedImage is null)
+            if (string.IsNullOrWhiteSpace(content) && request.Images.Count == 0)
             {
                 throw new DiscordPublicationValidationException(
                     "Enter message content or select an image.");
@@ -466,9 +624,10 @@ internal sealed class DiscordPublishingService(
         Uri? titleUrl = DiscordMessageValidation.OptionalHttpsUri(embed.TitleUrl, "Embed title URL");
         Uri? imageUrl = DiscordMessageValidation.OptionalHttpsUri(embed.ImageUrl, "Embed image URL");
         Uri? thumbnailUrl = DiscordMessageValidation.OptionalHttpsUri(embed.ThumbnailUrl, "Embed thumbnail URL");
-        if (request.UploadedImage?.EmbedPlacement == true)
+        DiscordValidatedImage? featured = request.Images.SingleOrDefault(value => value.EmbedPlacement);
+        if (featured is not null)
         {
-            imageUrl = new Uri($"attachment://{request.UploadedImage.OutboundFileName}");
+            imageUrl = new Uri($"attachment://{featured.OutboundFileName}");
         }
         else if (remoteImage is not null)
         {

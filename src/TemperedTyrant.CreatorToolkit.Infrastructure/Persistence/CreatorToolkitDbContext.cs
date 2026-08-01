@@ -7,6 +7,7 @@ using TemperedTyrant.CreatorToolkit.Core.Diagnostics;
 using TemperedTyrant.CreatorToolkit.Core.Identity;
 using TemperedTyrant.CreatorToolkit.Core.Publications;
 using TemperedTyrant.CreatorToolkit.Core.Setup;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Announcements;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Discord;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Publications;
@@ -32,6 +33,8 @@ public sealed class CreatorToolkitDbContext
     public DbSet<AuditRecord> AuditRecords => Set<AuditRecord>();
 
     public DbSet<Announcement> Announcements => Set<Announcement>();
+
+    public DbSet<AnnouncementMediaAsset> AnnouncementMediaAssets => Set<AnnouncementMediaAsset>();
 
     public DbSet<DiscordConnection> DiscordConnections => Set<DiscordConnection>();
 
@@ -78,6 +81,7 @@ public sealed class CreatorToolkitDbContext
         ConfigureAuditRecord(builder);
         ConfigureDiagnosticRecord(builder);
         ConfigureAnnouncement(builder);
+        ConfigureAnnouncementMedia(builder);
         ConfigureDiscord(builder);
         ConfigurePublications(builder);
     }
@@ -411,7 +415,10 @@ public sealed class CreatorToolkitDbContext
             announcement.HasKey(value => value.Id);
             announcement.Property(value => value.Id).ValueGeneratedNever();
             announcement.Property(value => value.Title).HasMaxLength(200).IsRequired();
-            announcement.Property(value => value.Body).HasMaxLength(10_000).IsRequired();
+            announcement.Property(value => value.MessageContent)
+                .HasColumnName("Body")
+                .HasMaxLength(10_000)
+                .IsRequired();
             announcement
                 .Property(value => value.Status)
                 .HasConversion<string>()
@@ -438,6 +445,68 @@ public sealed class CreatorToolkitDbContext
             announcement
                 .HasIndex(value => value.UpdatedAtUtc)
                 .IsDescending(true);
+        });
+    }
+
+    private static void ConfigureAnnouncementMedia(ModelBuilder builder)
+    {
+        builder.Entity<AnnouncementMediaAsset>(media =>
+        {
+            media.ToTable(
+                "AnnouncementMediaAssets",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_AnnouncementMediaAssets_ByteLength",
+                        "\"ByteLength\" BETWEEN 1 AND 8388608");
+                    table.HasCheckConstraint(
+                        "CK_AnnouncementMediaAssets_ContentType",
+                        "\"ContentType\" IN ('image/jpeg','image/png','image/webp','image/gif')");
+                    table.HasCheckConstraint(
+                        "CK_AnnouncementMediaAssets_Presentation",
+                        "\"Presentation\" IN ('Attachment','FeaturedImage')");
+                    table.HasCheckConstraint(
+                        "CK_AnnouncementMediaAssets_Revision",
+                        "\"Revision\" >= 1");
+                    table.HasCheckConstraint(
+                        "CK_AnnouncementMediaAssets_SortOrder",
+                        "\"SortOrder\" BETWEEN 0 AND 3");
+                    table.HasCheckConstraint(
+                        "CK_AnnouncementMediaAssets_Timestamps",
+                        "\"UpdatedAtUtc\" >= \"CreatedAtUtc\"");
+                });
+            media.HasKey(value => value.Id);
+            media.Property(value => value.Id).ValueGeneratedNever();
+            media.Property(value => value.ProtectedContent)
+                .HasMaxLength(AnnouncementMediaProtector.MaximumCiphertextBytes)
+                .IsRequired();
+            media.Property(value => value.ContentType).HasMaxLength(32).IsRequired();
+            media.Property(value => value.Sha256Digest).HasMaxLength(32).IsRequired();
+            media.Property(value => value.GeneratedFileName).HasMaxLength(80).IsRequired();
+            media.Property(value => value.AltText)
+                .HasMaxLength(AnnouncementMediaAsset.MaximumAltTextLength);
+            media.Property(value => value.Presentation)
+                .HasConversion<string>()
+                .HasMaxLength(24)
+                .IsRequired();
+            media.Property(value => value.CreatedAtUtc)
+                .HasConversion(
+                    value => value.ToUnixTimeMilliseconds(),
+                    value => DateTimeOffset.FromUnixTimeMilliseconds(value))
+                .IsRequired();
+            media.Property(value => value.UpdatedAtUtc)
+                .HasConversion(
+                    value => value.ToUnixTimeMilliseconds(),
+                    value => DateTimeOffset.FromUnixTimeMilliseconds(value))
+                .IsRequired();
+            media.Property(value => value.Revision).IsConcurrencyToken();
+            media.HasOne(value => value.Announcement)
+                .WithMany(value => value.Media)
+                .HasForeignKey(value => value.AnnouncementId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // Ordering is enforced transactionally by AnnouncementService. A unique
+            // SQLite index makes a valid 0/1 swap fail during intermediate updates.
+            media.HasIndex(value => new { value.AnnouncementId, value.SortOrder });
         });
     }
 

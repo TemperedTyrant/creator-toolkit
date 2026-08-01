@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Playwright;
 using TemperedTyrant.CreatorToolkit.Core.Announcements;
+using TemperedTyrant.CreatorToolkit.Core.Publications;
 using TemperedTyrant.CreatorToolkit.Infrastructure;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Discord;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
@@ -64,7 +65,25 @@ public sealed partial class AnnouncementBrowserTests
                     announcementId,
                     "Browser Discord draft",
                     "Browser Discord body",
-                    ownerId)).Status);
+                    ownerId,
+                    [
+                        new AnnouncementMediaUpload(
+                            [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x31],
+                            "first.png",
+                            "image/png",
+                            "First synthetic image",
+                            true,
+                            AnnouncementMediaPresentation.FeaturedImage,
+                            0),
+                        new AnnouncementMediaUpload(
+                            [0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x32],
+                            "second.gif",
+                            "image/gif",
+                            "Second synthetic image",
+                            false,
+                            AnnouncementMediaPresentation.Attachment,
+                            1),
+                    ])).Status);
         }
 
         using IPlaywright playwright = await Playwright.CreateAsync();
@@ -100,42 +119,52 @@ public sealed partial class AnnouncementBrowserTests
         await page.GetByRole(AriaRole.Link, new() { Name = "Publish to Discord" }).ClickAsync();
         Assert.Equal(0, await page.Locator("#MentionEveryone").CountAsync());
         await page.Locator("#ConnectionId").SelectOptionAsync(new SelectOptionValue { Index = 1 });
-        await page.GetByRole(AriaRole.Button, new() { Name = "Load publishing options" }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Open composer" }).ClickAsync();
         await page.Locator("#GuildId").SelectOptionAsync(DiscordBrowserGuildId);
-        await page.GetByRole(AriaRole.Button, new() { Name = "Load publishing options" }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Open composer" }).ClickAsync();
         await page.Locator("input[name='DestinationIds']").First.CheckAsync();
+        Assert.Equal(1, await page.Locator("textarea[name='MessageContent']").CountAsync());
+        Assert.Equal(0, await page.Locator("#EmbedDescription, #EmbedMessageText, #EmbedTitle").CountAsync());
+        await page.Locator("#MessageContent").FillAsync("**Durable browser send**\nRole and member selected explicitly.");
+        await page.GetByRole(AriaRole.Button, new() { Name = "Spoiler text" }).ClickAsync();
+        Assert.Contains("||spoiler text||", await page.Locator("#MessageContent").InputValueAsync(), StringComparison.Ordinal);
+        Assert.True(await page.GetByRole(AriaRole.Button, new() { Name = "Add images" }).IsVisibleAsync());
+        Assert.Equal(2, await page.Locator("input[name='SelectedMediaIds']:checked").CountAsync());
+        await page.Locator("input[name='SelectedMediaIds']").First.UncheckAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Add images" }).ClickAsync();
+        await page.Locator("#UploadedImage").SetInputFilesAsync(new FilePayload
+        {
+            Name = "publication.png",
+            MimeType = "image/png",
+            Buffer = Convert.FromBase64String(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="),
+        });
+        await page.Locator("#ImageAltText").FillAsync("One-time browser image");
+        await page.Locator("#ImageSpoiler").CheckAsync();
+        await page.Locator("#ImageInEmbed").SelectOptionAsync("true");
+        Assert.True(await page.Locator("[data-one-time-media-card]").IsVisibleAsync());
+        await page.GetByRole(AriaRole.Button, new() { Name = "Advanced presentation" }).ClickAsync();
         await page.Locator("input[name='Mode'][value='Embed']").CheckAsync();
-        await page.Locator("#EmbedMessageText").FillAsync("**Durable browser send**");
-        await page.Locator("#EmbedTitle").FillAsync("Discord-specific title");
-        await page.Locator("#EmbedDescription").FillAsync("Role and member selected explicitly.");
         await page.Locator("#EmbedTitleUrl").FillAsync("https://example.invalid/title");
         await page.Locator("#EmbedColor").FillAsync("#74c7a5");
         await page.Locator("#EmbedFooter").FillAsync("Synthetic footer");
         await page.Locator("#EmbedThumbnailUrl").FillAsync("https://example.invalid/thumbnail.png");
-        await page.Locator("#RemoteImageUrl").FillAsync("https://example.invalid/preserved-only.png");
+        await page.GetByRole(AriaRole.Button, new() { Name = "Open mention controls" }).ClickAsync();
+        await page.GetByText("Select roles (maximum 25)", new() { Exact = true }).ClickAsync();
         await page.Locator($"input[name='RoleIds'][value='{DiscordBrowserRoleId}']").CheckAsync();
-        await page.Locator("#ImageAltText").FillAsync("Synthetic image");
-        await page.Locator("#ImageSpoiler").CheckAsync();
-        await page.Locator("#ImageInEmbed").CheckAsync();
-        var image = new FilePayload
-        {
-            Name = "synthetic.png",
-            MimeType = "image/png",
-            Buffer = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00],
-        };
-        await page.Locator("#UploadedImage").SetInputFilesAsync(image);
+        Assert.Equal(1, await page.Locator("input[name='SelectedMediaIds']:checked").CountAsync());
         string composerUrl = page.Url;
         string announcementRevision = await page.Locator("#AnnouncementRevision").InputValueAsync();
         string submissionId = await page.Locator("#SubmissionId").InputValueAsync();
         await page.Locator("#MemberQuery").FillAsync("older");
-        await page.GetByRole(AriaRole.Button, new() { Name = "Search up to 25 members" }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Search", Exact = true }).ClickAsync();
         await adapter.OlderSearchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await page.Locator("#MemberQuery").FillAsync("newer");
         Task<IResponse> newerSearchResponse = page.WaitForResponseAsync(
             response => response.Request.Method == "POST"
                 && response.Url.Contains("handler=SearchMembers", StringComparison.Ordinal)
                 && response.Ok);
-        await page.GetByRole(AriaRole.Button, new() { Name = "Search up to 25 members" }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Search", Exact = true }).ClickAsync();
         await newerSearchResponse;
         adapter.OlderSearchCompletion.TrySetResult(
             [new DiscordGuildMember("500000000000000010", "Older result", [])]);
@@ -145,54 +174,62 @@ public sealed partial class AnnouncementBrowserTests
         Task<IResponse> memberSearchResponse = page.WaitForResponseAsync(
             response => response.Request.Method == "POST"
                 && response.Url.Contains("handler=SearchMembers", StringComparison.Ordinal));
-        await page.GetByRole(AriaRole.Button, new() { Name = "Search up to 25 members" }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Search", Exact = true }).ClickAsync();
         Assert.True((await memberSearchResponse).Ok);
         Assert.Equal(composerUrl, page.Url);
-        Assert.Equal("**Durable browser send**", await page.Locator("#EmbedMessageText").InputValueAsync());
-        Assert.Equal("Discord-specific title", await page.Locator("#EmbedTitle").InputValueAsync());
-        Assert.Equal("Role and member selected explicitly.", await page.Locator("#EmbedDescription").InputValueAsync());
+        Assert.Contains("Durable browser send", await page.Locator("#MessageContent").InputValueAsync(), StringComparison.Ordinal);
         Assert.Equal("https://example.invalid/title", await page.Locator("#EmbedTitleUrl").InputValueAsync());
         Assert.Equal("#74c7a5", await page.Locator("#EmbedColor").InputValueAsync());
         Assert.Equal("Synthetic footer", await page.Locator("#EmbedFooter").InputValueAsync());
         Assert.Equal("https://example.invalid/thumbnail.png", await page.Locator("#EmbedThumbnailUrl").InputValueAsync());
-        Assert.Equal("https://example.invalid/preserved-only.png", await page.Locator("#RemoteImageUrl").InputValueAsync());
         Assert.Equal(announcementRevision, await page.Locator("#AnnouncementRevision").InputValueAsync());
         Assert.Equal(submissionId, await page.Locator("#SubmissionId").InputValueAsync());
         Assert.True(await page.Locator("input[name='Mode'][value='Embed']").IsCheckedAsync());
         Assert.True(await page.Locator("input[name='DestinationIds']").First.IsCheckedAsync());
         Assert.True(await page.Locator($"input[name='RoleIds'][value='{DiscordBrowserRoleId}']").IsCheckedAsync());
-        Assert.True(await page.Locator("#ImageSpoiler").IsCheckedAsync());
-        Assert.True(await page.Locator("#ImageInEmbed").IsCheckedAsync());
+        Assert.Equal(1, await page.Locator("input[name='SelectedMediaIds']:checked").CountAsync());
         Assert.Equal(1, await page.Locator("#UploadedImage").EvaluateAsync<int>("input => input.files.length"));
+        Assert.True(await page.Locator("[data-one-time-media-card]").IsVisibleAsync());
         await page.Locator($"input[data-member-id='{DiscordBrowserMemberId}']").CheckAsync();
         Assert.Equal(
             1,
             await page.Locator($"input[type='hidden'][name='UserIds'][value='{DiscordBrowserMemberId}']").CountAsync());
-        await page.Locator("#RemoteImageUrl").FillAsync(string.Empty);
+        Task<IResponse> reviewResponse = page.WaitForResponseAsync(
+            response => response.Request.Method == "POST"
+                && response.Url.Contains("handler=Review", StringComparison.Ordinal));
         await page.GetByRole(AriaRole.Button, new() { Name = "Review publication", Exact = true }).ClickAsync();
-        Assert.True(
-            await page.GetByRole(AriaRole.Heading, new() { Name = "4. Confirmation" }).IsVisibleAsync(),
-            page.Url + ": " + string.Join(
-                " | ",
-                await page.Locator("[role='alert'], .field-validation-error").AllTextContentsAsync()));
-        Assert.True(await page.GetByText("Validated PNG image", new() { Exact = false }).IsVisibleAsync());
-        Assert.Equal(0, await page.Locator("#UploadedImage").EvaluateAsync<int>("input => input.files.length"));
+        Assert.True((await reviewResponse).Ok);
+        await page.Locator("#FinalConfirmation").WaitForAsync(new() { State = WaitForSelectorState.Visible });
+        Assert.True(await page.Locator("#FinalConfirmation").IsVisibleAsync(), page.Url);
+        Assert.True(await page.GetByText("Internal title (not sent)", new() { Exact = true }).IsVisibleAsync());
+        Assert.Equal(2, await page.Locator("[data-review-media] .review-media-card").CountAsync());
         await page.Locator("#FinalConfirmation").CheckAsync();
         await Task.WhenAll(
             page.WaitForURLAsync("**/PublishHistory/**"),
             page.GetByRole(AriaRole.Button, new() { Name = "Queue Discord publication" }).ClickAsync());
         await adapter.SendCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Guid publicationId = Guid.Parse(new Uri(page.Url).AbsolutePath.Split('/').Last());
+        await WaitForPublicationSuccessAsync(host.Services, publicationId);
         await page.ReloadAsync();
         Assert.True(await page.GetByText("Succeeded", new() { Exact = true }).First.IsVisibleAsync());
         string historyHtml = await page.ContentAsync();
         Assert.DoesNotContain("Durable browser send", historyHtml, StringComparison.Ordinal);
         Assert.DoesNotContain("Synthetic image", historyHtml, StringComparison.Ordinal);
         Assert.Single(adapter.Sent);
-        Assert.True(adapter.Sent[0].Spoiler);
-        Assert.True(adapter.Sent[0].EmbedPlacement);
-        Assert.Equal(image.Buffer, adapter.Sent[0].ImageBytes);
+        Assert.Equal(2, adapter.Sent[0].ImageBytes.Count);
+        Assert.Contains(adapter.Sent[0].Images, value => value.Spoiler && value.EmbedPlacement);
+        Assert.DoesNotContain("Browser Discord draft", adapter.Sent[0].Request.Embeds![0].Description, StringComparison.Ordinal);
         Assert.Contains(DiscordBrowserRoleId, adapter.Sent[0].Request.AllowedMentions.Roles!);
         Assert.Contains(DiscordBrowserMemberId, adapter.Sent[0].Request.AllowedMentions.Users!);
+        await using (AsyncServiceScope mediaVerification = host.Services.CreateAsyncScope())
+        {
+            Assert.Equal(
+                2,
+                await mediaVerification.ServiceProvider
+                    .GetRequiredService<CreatorToolkitDbContext>()
+                    .AnnouncementMediaAssets
+                    .CountAsync(value => value.AnnouncementId == announcementId));
+        }
 
         await SignOutAsync(page);
         await LoginAsync(page, origin, "announcement-viewer", ViewerPassword);
@@ -208,14 +245,45 @@ public sealed partial class AnnouncementBrowserTests
                 origin,
                 $"/Announcements/{announcementId}/PublishDiscord?ConnectionId={adapter.ConnectionId}&GuildId={DiscordBrowserGuildId}").AbsoluteUri);
         await page.Locator("input[name='DestinationIds']").First.CheckAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Open mention controls" }).ClickAsync();
         Assert.True(await page.GetByText("High impact:", new() { Exact = false }).IsVisibleAsync());
         await page.Locator("#MentionEveryone").CheckAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Review publication", Exact = true }).ClickAsync();
+        await page.GetByText("Mass mentions require the high-impact confirmation.", new() { Exact = true }).WaitForAsync();
         Assert.True(await page.GetByText("Mass mentions require the high-impact confirmation.", new() { Exact = true }).IsVisibleAsync());
         Assert.Single(adapter.Sent);
+        await page.GetByRole(AriaRole.Button, new() { Name = "Open mention controls" }).ClickAsync();
         await page.Locator("#MassMentionConfirmed").CheckAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Review publication", Exact = true }).ClickAsync();
-        Assert.True(await page.GetByRole(AriaRole.Heading, new() { Name = "4. Confirmation" }).IsVisibleAsync());
+        await page.Locator("#FinalConfirmation").WaitForAsync(new() { State = WaitForSelectorState.Visible });
+        Assert.True(await page.Locator("#FinalConfirmation").IsVisibleAsync());
+    }
+
+    private static async Task WaitForPublicationSuccessAsync(IServiceProvider services, Guid publicationId)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(50));
+        do
+        {
+            await using AsyncServiceScope scope = services.CreateAsyncScope();
+            PublicationStatus? status = await scope.ServiceProvider
+                .GetRequiredService<CreatorToolkitDbContext>()
+                .Publications
+                .Where(value => value.Id == publicationId)
+                .Select(value => (PublicationStatus?)value.Status)
+                .SingleOrDefaultAsync(timeout.Token);
+            if (status == PublicationStatus.Succeeded)
+            {
+                return;
+            }
+
+            Assert.False(
+                status is PublicationStatus.Failed or PublicationStatus.Cancelled,
+                $"The controlled publication reached safe terminal status {status}.");
+        }
+        while (await timer.WaitForNextTickAsync(timeout.Token));
+
+        throw new TimeoutException("The controlled publication did not reach success within its bound.");
     }
 
     private sealed class BrowserDiscordWebHost(WebApplication application) : IAsyncDisposable
@@ -345,21 +413,21 @@ public sealed partial class AnnouncementBrowserTests
                 ? new DiscordGuildMember(userId, "Member", [])
                 : null);
 
-        public Task<DiscordApiSendResult> SendMessageAsync(string token, string channelId, DiscordMessageRequest request, DiscordValidatedImage? image, CancellationToken cancellationToken)
+        public Task<DiscordApiSendResult> SendMessageAsync(string token, string channelId, DiscordMessageRequest request, IReadOnlyList<DiscordValidatedImage> images, CancellationToken cancellationToken)
         {
             Sent.Add(new SentDiscordMessage(
                 request,
-                image?.Bytes.ToArray(),
-                image?.Spoiler ?? false,
-                image?.EmbedPlacement ?? false));
+                images.Select(value => value.Bytes.ToArray()).ToArray(),
+                images.Select(value => new SentImage(value.Spoiler, value.EmbedPlacement)).ToArray()));
             SendCompleted.TrySetResult(true);
             return Task.FromResult(new DiscordApiSendResult(DiscordDeliveryStatus.Success, "500000000000000099"));
         }
 
         internal sealed record SentDiscordMessage(
             DiscordMessageRequest Request,
-            byte[]? ImageBytes,
-            bool Spoiler,
-            bool EmbedPlacement);
+            IReadOnlyList<byte[]> ImageBytes,
+            IReadOnlyList<SentImage> Images);
+
+        internal sealed record SentImage(bool Spoiler, bool EmbedPlacement);
     }
 }

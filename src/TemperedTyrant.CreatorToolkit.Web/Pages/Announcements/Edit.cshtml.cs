@@ -9,7 +9,8 @@ using TemperedTyrant.CreatorToolkit.Web.Security;
 namespace TemperedTyrant.CreatorToolkit.Web.Pages.Announcements;
 
 [Authorize(Policy = AuthorizationPolicies.ContentEditing)]
-[SensitiveSecurityHeaderProfile]
+[SensitiveScriptSecurityHeaderProfile]
+[RequestSizeLimit(9 * 1024 * 1024)]
 public sealed class EditModel(IAnnouncementService announcementService) : PageModel
 {
     [BindProperty(SupportsGet = true)]
@@ -19,10 +20,28 @@ public sealed class EditModel(IAnnouncementService announcementService) : PageMo
     public string Title { get; set; } = string.Empty;
 
     [BindProperty]
-    public string Body { get; set; } = string.Empty;
+    public string MessageContent { get; set; } = string.Empty;
 
     [BindProperty]
     public long Revision { get; set; }
+
+    [BindProperty]
+    public List<AnnouncementMediaEditInput> ExistingMedia { get; set; } = [];
+
+    [BindProperty]
+    public List<IFormFile> NewImages { get; set; } = [];
+
+    [BindProperty]
+    public List<string?> NewImageAltTexts { get; set; } = [];
+
+    [BindProperty]
+    public List<bool> NewImageSpoilers { get; set; } = [];
+
+    [BindProperty]
+    public List<AnnouncementMediaPresentation> NewImagePresentations { get; set; } = [];
+
+    [BindProperty]
+    public List<int> NewImageSortOrders { get; set; } = [];
 
     public bool HasConflict { get; private set; }
 
@@ -42,8 +61,19 @@ public sealed class EditModel(IAnnouncementService announcementService) : PageMo
         }
 
         Title = item.Title;
-        Body = item.Body;
+        MessageContent = item.MessageContent;
         Revision = item.Revision;
+        ExistingMedia = item.Media.Select(value => new AnnouncementMediaEditInput
+        {
+            Id = value.Id,
+            Revision = value.Revision,
+            SortOrder = value.SortOrder,
+            AltText = value.AltText,
+            IsSpoiler = value.IsSpoiler,
+            Presentation = value.Presentation,
+            ContentType = value.ContentType,
+            ByteLength = value.ByteLength,
+        }).ToList();
         return Page();
     }
 
@@ -55,13 +85,39 @@ public sealed class EditModel(IAnnouncementService announcementService) : PageMo
             return Forbid();
         }
 
-        AnnouncementOperationResult result = await announcementService.UpdateAsync(
-            Id,
-            Title,
-            Body,
-            Revision,
-            actorUserId.Value,
-            cancellationToken);
+        IReadOnlyList<AnnouncementMediaUpload> uploads = [];
+        AnnouncementOperationResult result;
+        try
+        {
+            int retained = ExistingMedia.Count(value => !value.Remove);
+            uploads = await AnnouncementMediaForm.ReadUploadsAsync(
+                NewImages,
+                NewImageAltTexts,
+                NewImageSpoilers,
+                NewImagePresentations,
+                NewImageSortOrders,
+                retained,
+                cancellationToken);
+            result = await announcementService.UpdateAsync(
+                Id,
+                Title,
+                MessageContent,
+                Revision,
+                actorUserId.Value,
+                new AnnouncementMediaChangeSet(
+                    ExistingMedia.Select(value => value.ToDomain()).ToArray(),
+                    uploads),
+                cancellationToken);
+        }
+        catch (AnnouncementMediaFormException exception)
+        {
+            ModelState.AddModelError("Media", exception.Message);
+            return Page();
+        }
+        finally
+        {
+            AnnouncementMediaForm.Zero(uploads);
+        }
         if (result.Status == AnnouncementOperationStatus.Succeeded)
         {
             return RedirectToPage(

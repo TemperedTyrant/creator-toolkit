@@ -1,7 +1,10 @@
 @page "/Announcements/{id:guid}/PublishDiscord"
 @model TemperedTyrant.CreatorToolkit.Web.Pages.Announcements.PublishDiscordModel
+@using TemperedTyrant.CreatorToolkit.Core.Announcements
 @using TemperedTyrant.CreatorToolkit.Infrastructure.Discord
+@using TemperedTyrant.CreatorToolkit.Web.Announcements
 <script src="/js/discord-member-search.js" type="module"></script>
+<script src="/js/discord-publication-review.js" type="module"></script>
 @{
     ViewData["Title"] = "Publish to Discord";
     var guildChoices = Model.Context?.Destinations
@@ -16,58 +19,74 @@
         .Where(value => Model.DestinationIds.Contains(value.Id))
         .Select(value => $"#{value.ChannelName}")
         .ToArray();
-    var mentionParts = new List<string>();
-    if (Model.MentionEveryone) mentionParts.Add("@everyone");
-    if (Model.MentionHere) mentionParts.Add("@here");
-    if (Model.RoleIds.Count > 0) mentionParts.Add($"{Model.RoleIds.Distinct().Count()} role(s)");
-    if (Model.UserIds.Count > 0 || !string.IsNullOrWhiteSpace(Model.ManualUserId))
-    {
-        mentionParts.Add($"{Model.UserIds.Distinct().Count() + (string.IsNullOrWhiteSpace(Model.ManualUserId) ? 0 : 1)} user(s)");
-    }
-    var mentionSummary = mentionParts.Count == 0 ? "No mentions" : string.Join(", ", mentionParts);
-    var imageSummary = Model.ReviewImageFormat is not null
-        ? $"Validated {Model.ReviewImageFormat} image{(Model.ImageSpoiler ? " (spoiler)" : string.Empty)}{(Model.ImageInEmbed ? " in embed" : " as attachment")}"
-        : Model.UploadedImage is not null
-        ? $"Uploaded image selected for validation{(Model.ImageSpoiler ? " (spoiler)" : string.Empty)}{(Model.ImageInEmbed ? " in embed" : " as attachment")}"
-        : string.IsNullOrWhiteSpace(Model.RemoteImageUrl) ? "No image" : "HTTPS remote image";
     var visibleMemberIds = Model.MemberResults.Select(value => value.UserId).ToHashSet(StringComparer.Ordinal);
+    var mediaInputs = Model.Context?.Media.Select(value => new AnnouncementMediaEditInput
+    {
+        Id = value.Id,
+        Revision = value.Revision,
+        SortOrder = value.SortOrder,
+        ContentType = value.ContentType,
+        ByteLength = value.ByteLength,
+        AltText = value.AltText,
+        IsSpoiler = value.IsSpoiler,
+        Presentation = value.Presentation,
+    }).ToArray() ?? [];
+    var composer = new AnnouncementComposerViewModel(
+        Model.Context?.AnnouncementTitle ?? string.Empty,
+        Model.MessageContent ?? string.Empty,
+        mediaInputs,
+        ShowTitle: false,
+        AllowUploads: false,
+        Model.Id,
+        Model.SelectedMediaIds,
+        AllowOneTimeUpload: true,
+        Model.ImageAltText,
+        Model.ImageSpoiler,
+        Model.ImageInEmbed);
 }
 @if (Model.Context is not null)
 {
     <header class="page-heading split-heading">
-        <div><h1>Publish to Discord</h1><p class="lede">Prepare a durable Discord publication for <strong>@Model.Context.AnnouncementTitle</strong>.</p></div>
+        <div>
+            <h1>Publish to Discord</h1>
+            <p class="lede"><strong>@Model.Context.AnnouncementTitle</strong> <span class="muted">— internal title, not sent</span></p>
+        </div>
         <a asp-page="/Announcements/Details" asp-route-id="@Model.Id">Cancel</a>
     </header>
     <section class="notice">
-        <p>Confirmation queues the reviewed publication in SQLite and redirects to Publish History. Delivery continues after browser disconnection and recovers after application restart. Scheduling is not implemented.</p>
+        <p>Reviewing and confirming creates an encrypted durable snapshot. Discord delivery continues after browser disconnection and restart.</p>
     </section>
-    <section class="card">
-        <h2>1. Server and channels</h2>
-        <form method="get">
-            <input type="hidden" name="id" value="@Model.Id">
-            <label asp-for="ConnectionId">Discord connection</label>
-            <select asp-for="ConnectionId">
-                <option value="">Choose a connection</option>
-                @foreach (var connection in Model.Context.Connections.Where(value => value.Enabled))
-                {
-                    <option value="@connection.Id">@connection.Name (@connection.BotUsername)</option>
-                }
-            </select>
-            @if (Model.ConnectionId != Guid.Empty)
-            {
-                <label asp-for="GuildId">Server</label>
-                <select asp-for="GuildId">
-                    <option value="">Choose a server</option>
-                    @foreach (var guild in guildChoices)
+
+    @if (Model.Discovery is null)
+    {
+        <section class="card compact-selector">
+            <h2>Destination</h2>
+            <form method="get">
+                <input type="hidden" name="id" value="@Model.Id">
+                <label asp-for="ConnectionId">Discord connection</label>
+                <select asp-for="ConnectionId">
+                    <option value="">Choose a connection</option>
+                    @foreach (var connection in Model.Context.Connections.Where(value => value.Enabled))
                     {
-                        <option value="@guild.GuildId">@guild.GuildName</option>
+                        <option value="@connection.Id">@connection.Name (@connection.BotUsername)</option>
                     }
                 </select>
-            }
-            <button type="submit">Load publishing options</button>
-        </form>
-    </section>
-    @if (Model.Discovery is not null)
+                @if (Model.ConnectionId != Guid.Empty)
+                {
+                    <label asp-for="GuildId">Server</label>
+                    <select asp-for="GuildId">
+                        <option value="">Choose a server</option>
+                        @foreach (var guild in guildChoices)
+                        {
+                            <option value="@guild.GuildId">@guild.GuildName</option>
+                        }
+                    </select>
+                }
+                <button type="submit">Open composer</button>
+            </form>
+        </section>
+    }
+    else
     {
         <form method="post"
               enctype="multipart/form-data"
@@ -82,56 +101,51 @@
             <input type="hidden" asp-for="ReviewComplete">
             <input type="hidden" asp-for="ReviewToken">
             <div asp-validation-summary="All" class="validation-summary" role="alert"></div>
-            <section class="card">
-                <h2>Channels</h2>
-                <fieldset><legend>Select up to 10 saved channels</legend>
-                @foreach (var destination in channelChoices)
-                {
-                    <label class="choice"><input type="checkbox" name="DestinationIds" value="@destination.Id" checked="@(Model.DestinationIds.Contains(destination.Id))"> #@destination.ChannelName</label>
-                }
+
+            <details class="card compact-selector" open>
+                <summary><strong>Destination:</strong> @Model.Context.Connections.Single(value => value.Id == Model.ConnectionId).Name / @Model.Discovery.Guild.Name / @(selectedChannels.Length == 0 ? "choose channels" : string.Join(", ", selectedChannels))</summary>
+                <fieldset>
+                    <legend>Select up to 10 saved channels in this server</legend>
+                    @foreach (var destination in channelChoices)
+                    {
+                        <label class="choice"><input type="checkbox" name="DestinationIds" value="@destination.Id" checked="@(Model.DestinationIds.Contains(destination.Id))"> #@destination.ChannelName</label>
+                    }
                 </fieldset>
-            </section>
+            </details>
+
             <section class="card">
-                <h2>2. Composition</h2>
-                <fieldset><legend>Message format</legend>
-                    <label class="choice"><input type="radio" asp-for="Mode" value="@DiscordMessageMode.Plain"> Plain message</label>
-                    <label class="choice"><input type="radio" asp-for="Mode" value="@DiscordMessageMode.Embed"> One rich embed</label>
-                </fieldset>
-                <h3>Plain message</h3>
-                <label asp-for="PlainContent">Message content</label>
-                <textarea asp-for="PlainContent" rows="10" maxlength="2000"></textarea>
-                <label class="choice"><input asp-for="ShowLinkPreviews"> Show automatic link previews</label>
-                <h3>Rich embed</h3>
-                <label asp-for="EmbedMessageText">Optional message above embed</label><textarea asp-for="EmbedMessageText" rows="3" maxlength="2000"></textarea>
-                <label asp-for="EmbedTitle">Embed title</label><input asp-for="EmbedTitle" maxlength="256">
-                <label asp-for="EmbedDescription">Embed description</label><textarea asp-for="EmbedDescription" rows="8" maxlength="4096"></textarea>
-                <label asp-for="EmbedTitleUrl">HTTPS title URL</label><input asp-for="EmbedTitleUrl" type="url" maxlength="2048">
-                <label asp-for="EmbedColor">Color (hex)</label><input asp-for="EmbedColor" placeholder="#74c7a5" maxlength="7">
-                <label asp-for="EmbedFooter">Footer</label><input asp-for="EmbedFooter" maxlength="2048">
-                <label asp-for="EmbedImageUrl">HTTPS embed image URL</label><input asp-for="EmbedImageUrl" type="url" maxlength="2048">
-                <label asp-for="EmbedThumbnailUrl">HTTPS thumbnail URL</label><input asp-for="EmbedThumbnailUrl" type="url" maxlength="2048">
-                <details><summary>Discord Markdown help</summary><p><code>**bold**</code>, <code>*italics*</code>, <code>__underline__</code>, <code>~~strike~~</code>, inline and fenced code, <code>&gt; quote</code>, <code>[masked](https://example.invalid)</code>, <code>||spoiler||</code>, channel mentions, Discord timestamps, and custom emoji syntax are supported by Discord. The local form is not an exact Discord preview.</p></details>
+                <h2>Message</h2>
+                <partial name="_AnnouncementComposer" model="composer" />
+                <p class="field-help">The internal title above is not inserted into this message. Discord-compatible Markdown is sent as source; this editor is not an exact Discord preview.</p>
             </section>
-            <section class="card">
-                <h2>Mentions</h2>
-                <p>Mentions are disabled unless selected here. Mention-looking Markdown alone cannot authorize a notification.</p>
+
+            <details class="card composer-option-panel" data-mention-panel>
+                <summary>Mentions <span class="muted">— disabled unless explicitly selected</span></summary>
+                <p>Typed mention syntax alone cannot authorize a notification. Selected IDs are validated against the live server before enqueueing.</p>
                 @if (Model.CanUseMassMentions)
                 {
-                    <div class="notice"><strong>High impact:</strong> mass mentions may notify many people and require the bot's effective Mention Everyone permission in every channel.</div>
+                    <div class="notice"><strong>High impact:</strong> mass mentions require effective Discord permission in every selected channel.</div>
                     <label class="choice"><input asp-for="MentionEveryone"> Include @@everyone</label>
                     <label class="choice"><input asp-for="MentionHere"> Include @@here</label>
                     <label class="choice"><input asp-for="MassMentionConfirmed"> Confirm this high-impact mass mention</label>
                 }
-                <fieldset><legend>Roles (maximum 25)</legend>
-                @foreach (var role in Model.Discovery.Roles.Where(value => value.Id != Model.Discovery.Guild.Id))
-                {
-                    bool permitted = role.Mentionable || (Model.CanUseMassMentions && Model.Discovery.Channels.All(value => value.CanMentionEveryone));
-                    if (permitted)
+                <details>
+                    <summary>Select roles (maximum 25)</summary>
+                    @foreach (var role in Model.Discovery.Roles.Where(value => value.Id != Model.Discovery.Guild.Id))
                     {
-                        <label class="choice"><input type="checkbox" name="RoleIds" value="@role.Id" checked="@(Model.RoleIds.Contains(role.Id))"> @role.Name <span class="muted">@role.Id · @(role.Mentionable ? "mentionable" : "requires Mention Everyone")</span></label>
+                        bool permitted = role.Mentionable || (Model.CanUseMassMentions && Model.Discovery.Channels.All(value => value.CanMentionEveryone));
+                        if (permitted)
+                        {
+                            <label class="choice"><input type="checkbox" name="RoleIds" value="@role.Id" checked="@(Model.RoleIds.Contains(role.Id))"> @role.Name <span class="muted">@role.Id</span></label>
+                        }
                     }
-                }
-                </fieldset>
+                </details>
+                <label asp-for="MemberQuery">Search members (2–100 characters)</label>
+                <div class="inline-form">
+                    <input asp-for="MemberQuery" minlength="2" maxlength="100" autocomplete="off">
+                    <button class="secondary" id="member-search-button" type="submit" asp-page-handler="SearchMembers">Search</button>
+                </div>
+                <span asp-validation-for="MemberQuery"></span>
                 <fieldset id="member-search-results" aria-busy="false">
                     <legend>Member search results</legend>
                     <div id="member-search-result-items">
@@ -145,60 +159,77 @@
                 @foreach (var selectedUserId in Model.UserIds.Distinct(StringComparer.Ordinal).Where(value => !visibleMemberIds.Contains(value)))
                 {
                     <input type="hidden" name="UserIds" value="@selectedUserId">
-                    <p class="muted">Selected Discord member ID: @selectedUserId</p>
+                    <span class="mention-chip">Selected user @selectedUserId</span>
                 }
                 </div>
-                <label asp-for="MemberQuery">Find a server member (2–100 characters)</label>
-                <input asp-for="MemberQuery" minlength="2" maxlength="100" autocomplete="off">
-                <span asp-validation-for="MemberQuery"></span>
-                <button class="secondary" id="member-search-button" type="submit" asp-page-handler="SearchMembers">Search up to 25 members</button>
-                <p id="member-search-status" class="muted" role="status" aria-live="polite">Search terms are sent to Discord but are not persisted or logged. If search is unavailable, use the manual ID field.</p>
-                <noscript><p class="notice">Member search reloads the page without JavaScript. Serializable composer fields are preserved, but a locally selected file must be selected again.</p></noscript>
-                <label asp-for="ManualUserId">Discord user ID (validated against this server)</label><input asp-for="ManualUserId" inputmode="numeric" maxlength="20">
-            </section>
-            <section class="card">
-                <h2>Image</h2>
-                <p>Choose one uploaded JPEG, PNG, WebP, or GIF (maximum 8 MiB), or one HTTPS remote image URL. Creator Toolkit never fetches remote URLs.</p>
-                <label asp-for="UploadedImage">Upload image</label><input asp-for="UploadedImage" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
-                <p class="muted">Before confirmation, a validated upload is held only in bounded process memory for up to 10 minutes and is lost on restart. Successful confirmation stores it only inside the encrypted pending publication payload.</p>
-                <label asp-for="RemoteImageUrl">HTTPS remote image URL</label><input asp-for="RemoteImageUrl" type="url" maxlength="2048">
-                <label asp-for="ImageAltText">Image alt text</label><input asp-for="ImageAltText" maxlength="1024">
-                <label class="choice"><input asp-for="ImageSpoiler"> Mark uploaded image as spoiler</label>
-                <label class="choice"><input asp-for="ImageInEmbed"> Place uploaded image inside the rich embed</label>
-            </section>
-            <section class="card">
-                <h2>3. Review</h2>
+                <label asp-for="ManualUserId">Discord user ID fallback</label>
+                <input asp-for="ManualUserId" inputmode="numeric" maxlength="20">
+                <p id="member-search-status" class="muted" role="status" aria-live="polite">Search terms are sent to Discord but are not persisted or logged.</p>
+            </details>
+
+            <details class="card composer-option-panel" data-advanced-panel>
+                <summary>More presentation options</summary>
+                <fieldset>
+                    <legend>Presentation</legend>
+                    <label class="choice"><input type="radio" asp-for="Mode" value="@DiscordMessageMode.Plain"> Plain message</label>
+                    <label class="choice"><input type="radio" asp-for="Mode" value="@DiscordMessageMode.Embed"> Rich embed</label>
+                </fieldset>
+                <label class="choice"><input asp-for="ShowLinkPreviews"> Show automatic link previews for a plain message</label>
+                <p class="field-help">In rich-embed mode, the main message becomes the embed description. No title or additional message is added automatically.</p>
+                <label asp-for="EmbedTitleUrl">HTTPS title link</label><input asp-for="EmbedTitleUrl" type="url" maxlength="2048">
+                <label asp-for="EmbedColor">Color (hex)</label><input asp-for="EmbedColor" placeholder="#74c7a5" maxlength="7">
+                <label asp-for="EmbedFooter">Footer</label><input asp-for="EmbedFooter" maxlength="2048">
+                <label asp-for="EmbedImageUrl">HTTPS external image URL</label><input asp-for="EmbedImageUrl" type="url" maxlength="2048">
+                <label asp-for="EmbedThumbnailUrl">HTTPS thumbnail URL</label><input asp-for="EmbedThumbnailUrl" type="url" maxlength="2048">
+                <p class="field-help">Creator Toolkit passes accepted HTTPS URLs to Discord and never fetches them.</p>
+            </details>
+
+            <section class="card review-summary">
+                <h2>Review and publish</h2>
                 <dl class="status-list">
-                    <dt>Announcement</dt><dd>@Model.Context.AnnouncementTitle</dd>
+                    <dt>Internal title (not sent)</dt><dd>@Model.Context.AnnouncementTitle</dd>
                     <dt>Announcement revision</dt><dd>@Model.AnnouncementRevision</dd>
-                    <dt>Connection</dt><dd>@Model.Context.Connections.Single(value => value.Id == Model.ConnectionId).Name</dd>
-                    <dt>Server</dt><dd>@Model.Discovery.Guild.Name</dd>
-                    <dt>Channels</dt><dd>@(selectedChannels.Length == 0 ? "No channels selected" : string.Join(", ", selectedChannels))</dd>
-                    <dt>Format</dt><dd>@Model.Mode</dd>
-                    <dt>Mentions</dt><dd>@mentionSummary</dd>
-                    <dt>Automatic link previews</dt><dd>@(Model.Mode == DiscordMessageMode.Plain && Model.ShowLinkPreviews ? "Enabled" : "Disabled")</dd>
-                    <dt>Image</dt><dd>@imageSummary</dd>
+                    <dt>Destinations</dt><dd>@(selectedChannels.Length == 0 ? "None selected" : string.Join(", ", selectedChannels))</dd>
+                    <dt>Presentation</dt><dd data-reviewed-presentation>@Model.Mode</dd>
+                    <dt>Stored images</dt><dd data-reviewed-image-count>@Model.SelectedMediaIds.Count selected</dd>
                     @if (Model.ReviewImageFormat is not null)
                     {
-                        <dt>Validated image format</dt><dd>@Model.ReviewImageFormat</dd>
-                        <dt>Validated image size</dt><dd>@Model.ReviewImageByteSize bytes</dd>
-                        <dt>Image label</dt><dd>@Model.ReviewImageSafeFileName</dd>
-                        <dt>Alt text</dt><dd>@(Model.ReviewImageHasAltText ? "Provided" : "Not provided")</dd>
+                        <dt>Publication-only image</dt><dd>Validated @Model.ReviewImageFormat image · @Model.ReviewImageByteSize bytes · @(Model.ImageSpoiler ? "Spoiler" : "Standard")</dd>
                     }
+                    <dt>Mass mention</dt><dd>@(Model.MentionEveryone ? "@@everyone" : Model.MentionHere ? "@@here" : "None")</dd>
                 </dl>
-                @if (!Model.ReviewComplete)
-                {
-                    <button type="submit" asp-page-handler="Review">Review publication</button>
-                }
-                else
-                {
-                    <div class="notice" role="status"><p>The server accepted this review step. Recheck the summary and complete the explicit confirmation below. A validated uploaded image is staged for this review even though the browser file control is now blank. If you leave this flow or change the image mode, select the file again.</p></div>
-                    <h3>4. Confirmation</h3>
-                    <label class="choice"><input asp-for="FinalConfirmation" required> I reviewed this publication and want to queue it for Discord delivery.</label>
+                <div class="review-media" data-review-media aria-label="Reviewed images" hidden="@(!Model.ReviewComplete)">
+                    @foreach (var media in mediaInputs.Where(value => Model.SelectedMediaIds.Contains(value.Id)).OrderBy(value => value.SortOrder))
+                    {
+                        <article class="review-media-card" data-reviewed-stored-media="@media.Id">
+                            <img src="/Announcements/@Model.Id/Media/@media.Id" alt="@(media.AltText ?? string.Empty)" loading="lazy">
+                            <div>
+                                <strong>Stored @media.ContentType[(media.ContentType.IndexOf('/') + 1)..].ToUpperInvariant() image</strong>
+                                <p>@media.ByteLength bytes · @(media.Presentation == AnnouncementMediaPresentation.FeaturedImage ? "Featured" : "Attachment")@(media.IsSpoiler ? " · Spoiler" : string.Empty)</p>
+                                <p>@(string.IsNullOrWhiteSpace(media.AltText) ? "No alt text" : $"Alt text: {media.AltText}")</p>
+                            </div>
+                        </article>
+                    }
+                    @if (Model.ReviewImageFormat is not null)
+                    {
+                        <article class="review-media-card" data-reviewed-one-time-media>
+                            <div data-one-time-review-preview aria-hidden="true"></div>
+                            <div>
+                                <strong>One-time @Model.ReviewImageFormat image</strong>
+                                <p>@Model.ReviewImageByteSize bytes · @(Model.ImageInEmbed ? "Featured" : "Attachment")@(Model.ImageSpoiler ? " · Spoiler" : string.Empty)</p>
+                                <p>@(Model.ReviewImageHasAltText ? "Alt text provided" : "No alt text") · Used for this publication only</p>
+                            </div>
+                        </article>
+                    }
+                </div>
+                <button type="submit" asp-page-handler="Review" data-review-publication hidden="@Model.ReviewComplete">Review publication</button>
+                <div data-review-confirmation hidden="@(!Model.ReviewComplete)">
+                    <div class="notice" role="status">The server validated this immutable review. Confirming queues it; this request does not call Discord.</div>
+                    <label class="choice"><input asp-for="FinalConfirmation" required> Queue this reviewed publication for Discord delivery.</label>
                     <span asp-validation-for="FinalConfirmation" class="field-validation-error"></span>
                     <button type="submit">Queue Discord publication</button>
-                    <button class="secondary" type="submit" asp-page-handler="Review">Review publication again</button>
-                }
+                    <button class="secondary" type="submit" asp-page-handler="Review" data-review-publication>Validate review again</button>
+                </div>
             </section>
         </form>
     }

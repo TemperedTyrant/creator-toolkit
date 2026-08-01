@@ -95,6 +95,218 @@ public sealed class DiscordPublishingTests
     }
 
     [Fact]
+    public async Task InternalAnnouncementTitleNeverEntersOutboundDiscordContent()
+    {
+        using TestDataDirectory data = new();
+        var api = new PublishingApi();
+        await using ServiceProvider provider = CreateProvider(data.Path, api);
+        await TestServices.InitializeAsync(provider);
+        PublicationSetup setup = await CreatePublicationSetupAsync(provider, api, [ChannelOne]);
+        await EnqueueAsync(provider, setup, CreateRequest(
+            Guid.NewGuid(),
+            setup.AnnouncementId,
+            setup.ConnectionId,
+            setup.Destinations));
+
+        Assert.True(await ProcessNextAsync(provider));
+
+        DiscordMessageRequest sent = Assert.Single(api.Messages);
+        Assert.Equal(ContentCanary, sent.Content);
+        Assert.DoesNotContain("Discord announcement", sent.Content, StringComparison.Ordinal);
+        Assert.Null(sent.Embeds);
+    }
+
+    [Fact]
+    public async Task StoredDraftImageIsCopiedIntoImmutablePayloadBeforeDraftRemoval()
+    {
+        using TestDataDirectory data = new();
+        var api = new PublishingApi();
+        await using ServiceProvider provider = CreateProvider(data.Path, api);
+        await TestServices.InitializeAsync(provider);
+        PublicationSetup setup = await CreatePublicationSetupAsync(provider, api, [ChannelOne]);
+        byte[] png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x51, 0x52, 0x53];
+        Guid mediaId;
+
+        await using (AsyncServiceScope editScope = provider.CreateAsyncScope())
+        {
+            IAnnouncementService announcements = editScope.ServiceProvider.GetRequiredService<IAnnouncementService>();
+            AnnouncementOperationResult mediaAdded = await announcements.UpdateAsync(
+                setup.AnnouncementId,
+                "Discord announcement",
+                ContentCanary,
+                1,
+                setup.ActorId,
+                new AnnouncementMediaChangeSet([], [new AnnouncementMediaUpload(
+                    png.ToArray(),
+                    "draft.png",
+                    "image/png",
+                    "Synthetic alt",
+                    true,
+                    AnnouncementMediaPresentation.FeaturedImage,
+                    0)]));
+            Assert.Equal(AnnouncementOperationStatus.Succeeded, mediaAdded.Status);
+            mediaId = Assert.Single((await announcements.GetAsync(setup.AnnouncementId))!.Media).Id;
+        }
+
+        DiscordPublishRequest request = CreateRequest(
+            Guid.NewGuid(),
+            setup.AnnouncementId,
+            setup.ConnectionId,
+            setup.Destinations) with
+        {
+            AnnouncementRevision = 2,
+            AnnouncementMediaIds = [mediaId],
+        };
+        await EnqueueAsync(provider, setup, request);
+
+        await using (AsyncServiceScope removeScope = provider.CreateAsyncScope())
+        {
+            IAnnouncementService announcements = removeScope.ServiceProvider.GetRequiredService<IAnnouncementService>();
+            AnnouncementDetails draft = (await announcements.GetAsync(setup.AnnouncementId))!;
+            AnnouncementMediaSummary media = Assert.Single(draft.Media);
+            Assert.Equal(
+                AnnouncementOperationStatus.Succeeded,
+                (await announcements.UpdateAsync(
+                    setup.AnnouncementId,
+                    draft.Title,
+                    draft.MessageContent,
+                    draft.Revision,
+                    setup.ActorId,
+                    new AnnouncementMediaChangeSet(
+                        [new AnnouncementMediaEdit(media.Id, media.Revision, 0, media.AltText, media.IsSpoiler, media.Presentation, true)],
+                        []))).Status);
+        }
+
+        Assert.True(await ProcessNextAsync(provider));
+        Assert.Equal(png, Assert.Single(api.Images));
+        await using AsyncServiceScope verification = provider.CreateAsyncScope();
+        CreatorToolkitDbContext db = verification.ServiceProvider.GetRequiredService<CreatorToolkitDbContext>();
+        Assert.Empty(await db.AnnouncementMediaAssets.ToArrayAsync());
+        Assert.Empty(await db.PublicationPayloads.ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task StoredAndOneTimeImagesShareOneImmutablePublicationSnapshot()
+    {
+        using TestDataDirectory data = new();
+        var api = new PublishingApi();
+        await using ServiceProvider provider = CreateProvider(data.Path, api);
+        await TestServices.InitializeAsync(provider);
+        PublicationSetup setup = await CreatePublicationSetupAsync(provider, api, [ChannelOne]);
+        byte[] storedBytes = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x31];
+        byte[] oneTimeBytes = [0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x32];
+        Guid mediaId;
+        await using (AsyncServiceScope editScope = provider.CreateAsyncScope())
+        {
+            IAnnouncementService announcements = editScope.ServiceProvider.GetRequiredService<IAnnouncementService>();
+            Assert.Equal(
+                AnnouncementOperationStatus.Succeeded,
+                (await announcements.UpdateAsync(
+                    setup.AnnouncementId,
+                    "Discord announcement",
+                    ContentCanary,
+                    1,
+                    setup.ActorId,
+                    new AnnouncementMediaChangeSet([], [new AnnouncementMediaUpload(
+                        storedBytes.ToArray(),
+                        "stored.png",
+                        "image/png",
+                        "Stored alt",
+                        false,
+                        AnnouncementMediaPresentation.Attachment,
+                        0)]))).Status);
+            mediaId = Assert.Single((await announcements.GetAsync(setup.AnnouncementId))!.Media).Id;
+        }
+
+        DiscordValidatedImage oneTime = DiscordImageValidation.Validate(
+            oneTimeBytes.ToArray(),
+            "one-time.gif",
+            "image/gif",
+            "One-time alt",
+            true,
+            true,
+            Guid.NewGuid());
+        DiscordPublishRequest request = CreateRequest(
+            Guid.NewGuid(),
+            setup.AnnouncementId,
+            setup.ConnectionId,
+            setup.Destinations,
+            oneTime) with
+        {
+            AnnouncementRevision = 2,
+            AnnouncementMediaIds = [mediaId],
+            Mode = DiscordMessageMode.Embed,
+            Embed = new DiscordEmbedInput(null, null, ContentCanary, null, null, null, null, null),
+        };
+        await EnqueueAsync(provider, setup, request);
+
+        Assert.True(await ProcessNextAsync(provider));
+        Assert.Equal(2, api.Images.Count);
+        Assert.Equal(storedBytes, api.Images[0]);
+        Assert.Equal(oneTimeBytes, api.Images[1]);
+        DiscordMessageRequest sent = Assert.Single(api.Messages);
+        Assert.Equal(2, sent.Attachments!.Count);
+        Assert.False(sent.Attachments[0].IsSpoiler);
+        Assert.True(sent.Attachments[1].IsSpoiler);
+        Assert.Equal(
+            $"attachment://{sent.Attachments[1].FileName}",
+            Assert.Single(sent.Embeds!).Image!.Url);
+
+        await using AsyncServiceScope verification = provider.CreateAsyncScope();
+        CreatorToolkitDbContext db = verification.ServiceProvider.GetRequiredService<CreatorToolkitDbContext>();
+        Assert.Single(await db.AnnouncementMediaAssets.ToArrayAsync());
+        Assert.Empty(await db.PublicationPayloads.ToArrayAsync());
+    }
+
+    [Fact]
+    public void StoredAndOneTimeImagesCannotExceedCombinedPublicationLimits()
+    {
+        DiscordValidatedImage Image(int length, bool featured = false) => new(
+            new byte[length],
+            "safe.png",
+            "image/png",
+            null,
+            false,
+            featured);
+        DiscordPublishRequest baseline = CreateRequest(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            [new DiscordDestinationListItem(
+                Guid.NewGuid(), Guid.NewGuid(), GuildId, "Guild", ChannelOne, "Channel", 0, true, 1)]);
+
+        DiscordPublicationValidationException count = Assert.Throws<DiscordPublicationValidationException>(
+            () => DiscordPublishingService.ValidateRequestShape(
+                baseline with
+                {
+                    StoredImages = [Image(1), Image(1), Image(1), Image(1)],
+                    UploadedImage = Image(1),
+                },
+                false));
+        Assert.Equal("Select no more than four images.", count.Message);
+
+        DiscordPublicationValidationException bytes = Assert.Throws<DiscordPublicationValidationException>(
+            () => DiscordPublishingService.ValidateRequestShape(
+                baseline with
+                {
+                    StoredImages = [Image(AnnouncementMediaAsset.MaximumCombinedBytes)],
+                    UploadedImage = Image(1),
+                },
+                false));
+        Assert.Equal("Selected images must be no larger than 8 MiB combined.", bytes.Message);
+
+        DiscordPublicationValidationException featured = Assert.Throws<DiscordPublicationValidationException>(
+            () => DiscordPublishingService.ValidateRequestShape(
+                baseline with
+                {
+                    StoredImages = [Image(1, true)],
+                    UploadedImage = Image(1, true),
+                },
+                false));
+        Assert.Equal("Select no more than one Featured image.", featured.Message);
+    }
+
+    [Fact]
     public async Task ReviewFailsClosedWhenLiveChannelCanNoLongerSend()
     {
         using TestDataDirectory data = new();
@@ -762,12 +974,12 @@ public sealed class DiscordPublishingTests
             string token,
             string channelId,
             DiscordMessageRequest request,
-            DiscordValidatedImage? image,
+            IReadOnlyList<DiscordValidatedImage> images,
             CancellationToken cancellationToken)
         {
             SendCalls++;
             Messages.Add(request);
-            if (image is not null)
+            foreach (DiscordValidatedImage image in images)
             {
                 Images.Add(image.Bytes.ToArray());
             }

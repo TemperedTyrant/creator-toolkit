@@ -178,6 +178,10 @@ public sealed partial class AnnouncementHttpTests
         AssertNoStoreAndSecurityHeaders(ownerPage);
         string ownerHtml = await ownerPage.Content.ReadAsStringAsync();
         string editorHtml = await editorPage.Content.ReadAsStringAsync();
+        Assert.Contains("data-image-trigger", ownerHtml, StringComparison.Ordinal);
+        Assert.Contains(">Image</button>", ownerHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"UploadedImage\"", ownerHtml, StringComparison.Ordinal);
+        Assert.Contains("Used for this publication only", ownerHtml, StringComparison.Ordinal);
         Assert.Contains("MentionEveryone", ownerHtml, StringComparison.Ordinal);
         Assert.DoesNotContain("MentionEveryone", editorHtml, StringComparison.Ordinal);
         AssertAccessDenied(await viewer.GetAsync(route));
@@ -744,12 +748,12 @@ public sealed partial class AnnouncementHttpTests
         public Task<DiscordGuildMember?> GetMemberAsync(string token, string guildId, string userId, CancellationToken cancellationToken) =>
             Task.FromResult<DiscordGuildMember?>(new DiscordGuildMember(userId, "Member", []));
 
-        public Task<DiscordApiSendResult> SendMessageAsync(string token, string channelId, DiscordMessageRequest request, DiscordValidatedImage? image, CancellationToken cancellationToken)
+        public Task<DiscordApiSendResult> SendMessageAsync(string token, string channelId, DiscordMessageRequest request, IReadOnlyList<DiscordValidatedImage> images, CancellationToken cancellationToken)
         {
             SentMessages.Add(request);
-            if (image is not null)
+            if (images.Count > 0)
             {
-                SentImages.Add(image.Bytes.ToArray());
+                SentImages.Add(images[0].Bytes.ToArray());
             }
 
             return Task.FromResult(new DiscordApiSendResult(DiscordDeliveryStatus.Success, "400000000000000099"));

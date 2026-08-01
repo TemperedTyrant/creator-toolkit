@@ -41,7 +41,7 @@ public sealed class AnnouncementPersistenceTests
                 .GetRequiredService<IAnnouncementService>()
                 .GetAsync(id));
         Assert.Equal("Restart draft", item.Title);
-        Assert.Equal("Line one\n\nLine two", item.Body);
+        Assert.Equal("Line one\n\nLine two", item.MessageContent);
         Assert.Equal(AnnouncementStatus.Draft, item.Status);
         Assert.Equal(InitialTime, item.CreatedAtUtc);
         Assert.Equal(InitialTime, item.UpdatedAtUtc);
@@ -134,7 +134,9 @@ public sealed class AnnouncementPersistenceTests
     public async Task TwoLoadedRevisionsAllowOnlyFirstWriterToCommit()
     {
         using TestDataDirectory data = new();
-        await using ServiceProvider provider = TestServices.Create(data.Path);
+        await using ServiceProvider provider = TestServices.Create(
+            data.Path,
+            timeProvider: new ManualTimeProvider(InitialTime));
         await TestServices.InitializeAsync(provider);
         IDbContextFactory<CreatorToolkitDbContext> factory = provider
             .GetRequiredService<IDbContextFactory<CreatorToolkitDbContext>>();

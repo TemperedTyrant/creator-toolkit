@@ -112,6 +112,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IInfrastructureReadinessProbe, InfrastructureReadinessProbe>();
         services.AddScoped<IAuditWriter, TransactionalAuditWriter>();
         services.AddScoped<IAnnouncementService, AnnouncementService>();
+        services.AddSingleton<AnnouncementMediaProtector>();
         services.AddHttpClient<DiscordHttpApi>(
                 client =>
                 {
