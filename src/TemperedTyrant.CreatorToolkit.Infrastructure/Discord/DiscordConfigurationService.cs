@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using TemperedTyrant.CreatorToolkit.Core.Audit;
+using TemperedTyrant.CreatorToolkit.Core.Diagnostics;
 using TemperedTyrant.CreatorToolkit.Core.Security;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Security;
@@ -12,8 +14,17 @@ internal sealed class DiscordConfigurationService(
     IProtectedSecretValueResolver secretResolver,
     IDiscordApi discordApi,
     IAuditWriter auditWriter,
-    TimeProvider timeProvider) : IDiscordConfigurationService
+    TimeProvider timeProvider,
+    IDiagnosticRecorder diagnosticRecorder,
+    ILogger<DiscordConfigurationService> logger) : IDiscordConfigurationService
 {
+    private static readonly Action<ILogger, string, Guid, string, string, string, Exception?>
+        LogDiscoveryFailure = LoggerMessage.Define<string, Guid, string, string, string>(
+            LogLevel.Warning,
+            new EventId(4200, "DiscordServerDiscoveryFailed"),
+            "Discord server discovery failed. Stage: {OperationStage}; connection: {ConnectionId}; "
+            + "guild: {GuildId}; category: {FailureCategory}; reference: {DiagnosticReference}.");
+
     public async Task<IReadOnlyList<DiscordConnectionListItem>> ListAsync(
         CancellationToken cancellationToken = default) =>
         await dbContext.DiscordConnections
@@ -328,15 +339,77 @@ internal sealed class DiscordConfigurationService(
             return null;
         }
 
-        return await UseTokenAsync(
-            connection,
-            (token, ct) => discordApi.DiscoverGuildAsync(
-                token,
-                Identity(connection),
+        try
+        {
+            return await UseTokenAsync(
+                connection,
+                (token, ct) => discordApi.DiscoverGuildAsync(
+                    token,
+                    Identity(connection),
+                    guildId,
+                    ct),
+                cancellationToken);
+        }
+        catch (DiscordServerInformationException exception)
+        {
+            throw await RecordDiscoveryFailureAsync(
+                connectionId,
                 guildId,
-                ct),
-            cancellationToken);
+                exception.Stage,
+                exception.Failure,
+                cancellationToken);
+        }
+        catch (DiscordApiAuthenticationException)
+        {
+            throw await RecordDiscoveryFailureAsync(
+                connectionId,
+                guildId,
+                DiscordDiscoveryStage.GuildResponse,
+                DiscordServerInformationFailure.AuthenticationFailed,
+                cancellationToken);
+        }
+        catch (DiscordApiUnavailableException)
+        {
+            throw await RecordDiscoveryFailureAsync(
+                connectionId,
+                guildId,
+                DiscordDiscoveryStage.GuildResponse,
+                DiscordServerInformationFailure.TemporarilyUnavailable,
+                cancellationToken);
+        }
     }
+
+    private async Task<DiscordServerInformationException> RecordDiscoveryFailureAsync(
+        Guid connectionId,
+        string guildId,
+        DiscordDiscoveryStage stage,
+        DiscordServerInformationFailure failure,
+        CancellationToken cancellationToken)
+    {
+        DiagnosticReference reference = await diagnosticRecorder.RecordAsync(
+            new UnexpectedDiagnosticEvent(
+                DiagnosticFailureKind.Infrastructure,
+                DiagnosticOperation.DiscordServerDiscovery,
+                ExceptionType(failure)),
+            cancellationToken);
+        LogDiscoveryFailure(
+            logger,
+            stage.ToString(),
+            connectionId,
+            guildId,
+            failure.ToString(),
+            reference.Value,
+            null);
+        return new DiscordServerInformationException(stage, failure, reference.Value);
+    }
+
+    private static DiagnosticExceptionType ExceptionType(DiscordServerInformationFailure failure) =>
+        failure switch
+        {
+            DiscordServerInformationFailure.TemporarilyUnavailable =>
+                DiagnosticExceptionType.InputOutput,
+            _ => DiagnosticExceptionType.InvalidOperation,
+        };
 
     public async Task<DiscordOperationResult> SaveDestinationsAsync(
         Guid connectionId,
@@ -465,6 +538,20 @@ internal sealed class DiscordConfigurationService(
                 connection.Id,
                 destination.GuildId,
                 cancellationToken);
+        }
+        catch (DiscordServerInformationException exception)
+        {
+            DiscordDeliveryStatus status = exception.Failure switch
+            {
+                DiscordServerInformationFailure.AuthenticationFailed =>
+                    DiscordDeliveryStatus.AuthenticationFailed,
+                DiscordServerInformationFailure.NotInstalled =>
+                    DiscordDeliveryStatus.DestinationUnavailable,
+                DiscordServerInformationFailure.AccessDenied =>
+                    DiscordDeliveryStatus.MissingPermission,
+                _ => DiscordDeliveryStatus.DiscordUnavailable,
+            };
+            return Result(destination, status);
         }
         catch (DiscordApiAuthenticationException)
         {

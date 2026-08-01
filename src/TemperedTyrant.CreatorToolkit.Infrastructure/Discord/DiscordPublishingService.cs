@@ -232,6 +232,24 @@ internal sealed class DiscordPublishingService(
                 DiscordDeliveryStatus.DiscordUnavailable,
                 actorUserId);
         }
+        catch (DiscordServerInformationException exception)
+        {
+            DiscordDeliveryStatus status = exception.Failure switch
+            {
+                DiscordServerInformationFailure.AuthenticationFailed =>
+                    DiscordDeliveryStatus.AuthenticationFailed,
+                DiscordServerInformationFailure.NotInstalled =>
+                    DiscordDeliveryStatus.DestinationUnavailable,
+                DiscordServerInformationFailure.AccessDenied =>
+                    DiscordDeliveryStatus.MissingPermission,
+                _ => DiscordDeliveryStatus.DiscordUnavailable,
+            };
+            return await CompleteWithoutSendingAsync(
+                request.SubmissionId,
+                destinations,
+                status,
+                actorUserId);
+        }
     }
 
     private async Task<DiscordPublicationResult> PublishWithTokenAsync(

@@ -90,12 +90,21 @@ public sealed class DetailsModel(IDiscordConfigurationService discord) : PageMod
             return Forbid();
         }
 
-        DiscordOperationResult result = await discord.SaveDestinationsAsync(
-            Id,
-            GuildId,
-            ChannelIds,
-            actor.Value,
-            token);
+        DiscordOperationResult result;
+        try
+        {
+            result = await discord.SaveDestinationsAsync(
+                Id,
+                GuildId,
+                ChannelIds,
+                actor.Value,
+                token);
+        }
+        catch (DiscordServerInformationException)
+        {
+            return RedirectToPage(new { id = Id, GuildId });
+        }
+
         return RedirectToPage(new
         {
             id = Id,
@@ -252,9 +261,19 @@ public sealed class DetailsModel(IDiscordConfigurationService discord) : PageMod
                 Discovery = await discord.DiscoverGuildAsync(Id, GuildId, token);
             }
         }
-        catch (Exception exception) when (exception is DiscordApiAuthenticationException or DiscordApiUnavailableException)
+        catch (DiscordServerInformationException exception)
         {
-            StatusMessage = "Discord server information is unavailable. Validate the bot credential and try again.";
+            StatusMessage = exception.DiagnosticReference is null
+                ? exception.SafeMessage
+                : $"{exception.SafeMessage} Diagnostic reference: {exception.DiagnosticReference}";
+        }
+        catch (DiscordApiAuthenticationException)
+        {
+            StatusMessage = "Discord bot authentication failed.";
+        }
+        catch (DiscordApiUnavailableException)
+        {
+            StatusMessage = "Discord is temporarily unavailable.";
         }
 
         return true;

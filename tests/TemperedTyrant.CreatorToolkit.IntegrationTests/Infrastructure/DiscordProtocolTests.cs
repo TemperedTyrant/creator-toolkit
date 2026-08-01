@@ -253,6 +253,7 @@ public sealed class DiscordProtocolTests
         Assert.Contains("/api/v10/users/@me", handler.Paths);
         Assert.Contains("/api/v10/oauth2/applications/@me", handler.Paths);
         Assert.Contains($"/api/v10/guilds/{GuildId}/roles", handler.Paths);
+        Assert.Contains($"/api/v10/guilds/{GuildId}", handler.Paths);
         Assert.Contains($"/api/v10/guilds/{GuildId}/channels", handler.Paths);
         Assert.Contains($"/api/v10/guilds/{GuildId}/members/{BotId}", handler.Paths);
         Assert.Contains($"/api/v10/guilds/{GuildId}/members/{UserId}", handler.Paths);
@@ -263,6 +264,131 @@ public sealed class DiscordProtocolTests
                 StringComparison.Ordinal));
         Assert.All(handler.Hosts, value => Assert.Equal("discord.com", value));
         Assert.All(handler.AuthorizationSchemes, value => Assert.Equal("Bot", value));
+    }
+
+    [Fact]
+    public async Task MixedCurrentAndFutureChannelShapesDeserializeAndFilterSafely()
+    {
+        var handler = new MixedDiscoveryHandler();
+        using var client = new HttpClient(handler)
+        {
+            BaseAddress = DiscordHttpApi.ApiBaseAddress,
+            Timeout = TimeSpan.FromSeconds(5),
+        };
+        var api = new DiscordHttpApi(client);
+
+        DiscordGuildDiscovery? discovery = await api.DiscoverGuildAsync(
+            "synthetic-mixed-shape-token",
+            new DiscordBotIdentity(BotId, "Synthetic bot", "100000000000000099"),
+            GuildId,
+            CancellationToken.None);
+
+        Assert.NotNull(discovery);
+        Assert.Equal(
+            [
+                "100000000000000011",
+                "100000000000000012",
+                "100000000000000020",
+                "100000000000000021",
+            ],
+            discovery.Channels.Select(value => value.Id).Order().ToArray());
+        Assert.All(discovery.Channels, value =>
+        {
+            Assert.True(value.CanView);
+            Assert.True(value.CanSend);
+        });
+        Assert.Contains(discovery.Channels, value => value.Type == 5);
+        Assert.Contains(discovery.Channels, value => value.Name == "Discord channel");
+        Assert.Equal([RoleId, "100000000000000006"], discovery.BotMember.RoleIds);
+    }
+
+    [Fact]
+    public async Task MalformedCriticalRolePermissionFailsClosedAtPermissionParsingStage()
+    {
+        using var client = new HttpClient(new MixedDiscoveryHandler(malformedRolePermission: true))
+        {
+            BaseAddress = DiscordHttpApi.ApiBaseAddress,
+        };
+        var api = new DiscordHttpApi(client);
+
+        DiscordServerInformationException failure = await Assert.ThrowsAsync<DiscordServerInformationException>(
+            () => api.DiscoverGuildAsync(
+                "synthetic-malformed-role-token",
+                new DiscordBotIdentity(BotId, "Synthetic bot", "100000000000000099"),
+                GuildId,
+                CancellationToken.None));
+
+        Assert.Equal(DiscordDiscoveryStage.PermissionBitParsing, failure.Stage);
+        Assert.Equal(DiscordServerInformationFailure.UnsupportedResponse, failure.Failure);
+        Assert.DoesNotContain("permission", failure.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task MalformedSupportedChannelOverwriteFailsClosedWithoutCredentialClassification()
+    {
+        using var client = new HttpClient(new MixedDiscoveryHandler(malformedOverwritePermission: true))
+        {
+            BaseAddress = DiscordHttpApi.ApiBaseAddress,
+        };
+        var api = new DiscordHttpApi(client);
+
+        DiscordServerInformationException failure = await Assert.ThrowsAsync<DiscordServerInformationException>(
+            () => api.DiscoverGuildAsync(
+                "synthetic-malformed-overwrite-token",
+                new DiscordBotIdentity(BotId, "Synthetic bot", "100000000000000099"),
+                GuildId,
+                CancellationToken.None));
+
+        Assert.Equal(DiscordDiscoveryStage.ChannelOverwriteParsing, failure.Stage);
+        Assert.Equal(DiscordServerInformationFailure.UnsupportedResponse, failure.Failure);
+        Assert.Equal("Discord returned unsupported server information.", failure.SafeMessage);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, DiscordServerInformationFailure.AuthenticationFailed)]
+    [InlineData(HttpStatusCode.Forbidden, DiscordServerInformationFailure.AccessDenied)]
+    [InlineData(HttpStatusCode.NotFound, DiscordServerInformationFailure.NotInstalled)]
+    [InlineData(HttpStatusCode.BadRequest, DiscordServerInformationFailure.UnsupportedResponse)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, DiscordServerInformationFailure.TemporarilyUnavailable)]
+    public async Task DiscoveryHttpFailuresKeepTheirSafeCategory(
+        HttpStatusCode status,
+        DiscordServerInformationFailure expected)
+    {
+        using var client = new HttpClient(new DiscoveryFailureHandler(status))
+        {
+            BaseAddress = DiscordHttpApi.ApiBaseAddress,
+        };
+        var api = new DiscordHttpApi(client);
+
+        DiscordServerInformationException failure = await Assert.ThrowsAsync<DiscordServerInformationException>(
+            () => api.DiscoverGuildAsync(
+                "synthetic-status-token",
+                new DiscordBotIdentity(BotId, "Synthetic bot", "100000000000000099"),
+                GuildId,
+                CancellationToken.None));
+
+        Assert.Equal(DiscordDiscoveryStage.ChannelListDeserialization, failure.Stage);
+        Assert.Equal(expected, failure.Failure);
+    }
+
+    [Fact]
+    public async Task MalformedChannelJsonIsUnsupportedResponseRatherThanAuthenticationFailure()
+    {
+        using var client = new HttpClient(new DiscoveryFailureHandler(HttpStatusCode.OK, "not-json"))
+        {
+            BaseAddress = DiscordHttpApi.ApiBaseAddress,
+        };
+        var api = new DiscordHttpApi(client);
+
+        DiscordServerInformationException failure = await Assert.ThrowsAsync<DiscordServerInformationException>(
+            () => api.DiscoverGuildAsync(
+                "synthetic-json-token",
+                new DiscordBotIdentity(BotId, "Synthetic bot", "100000000000000099"),
+                GuildId,
+                CancellationToken.None));
+
+        Assert.Equal(DiscordDiscoveryStage.ChannelListDeserialization, failure.Stage);
+        Assert.Equal(DiscordServerInformationFailure.UnsupportedResponse, failure.Failure);
     }
 
     [Fact]
@@ -539,6 +665,7 @@ public sealed class DiscordProtocolTests
                 "/api/v10/users/@me" => $"{{\"id\":\"{BotId}\",\"username\":\"bot\",\"global_name\":\"Creator Toolkit\",\"bot\":true}}",
                 "/api/v10/oauth2/applications/@me" => $"{{\"id\":\"100000000000000099\",\"bot\":{{\"id\":\"{BotId}\",\"username\":\"bot\",\"global_name\":null,\"bot\":true}}}}",
                 "/api/v10/users/@me/guilds" => $"[{{\"id\":\"{GuildId}\",\"name\":\"Creators\",\"icon\":null}}]",
+                var path when path.EndsWith($"/guilds/{GuildId}", StringComparison.Ordinal) => $"{{\"id\":\"{GuildId}\",\"name\":\"Creators\",\"icon\":null}}",
                 var path when path.EndsWith("/roles", StringComparison.Ordinal) => $"[{{\"id\":\"{GuildId}\",\"name\":\"everyone\",\"permissions\":\"{DiscordPermissionCalculator.StandardInstallPermissions}\",\"mentionable\":false}}]",
                 var path when path.EndsWith("/channels", StringComparison.Ordinal) => $"[{{\"id\":\"{ChannelId}\",\"guild_id\":\"{GuildId}\",\"name\":\"announcements\",\"type\":0,\"permission_overwrites\":[]}}]",
                 var path when path.EndsWith($"/members/{BotId}", StringComparison.Ordinal) => $"{{\"user\":{{\"id\":\"{BotId}\",\"username\":\"bot\",\"global_name\":null,\"bot\":true}},\"nick\":null,\"roles\":[]}}",
@@ -549,6 +676,95 @@ public sealed class DiscordProtocolTests
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json"),
+            });
+        }
+    }
+
+    private sealed class MixedDiscoveryHandler(
+        bool malformedRolePermission = false,
+        bool malformedOverwritePermission = false) : HttpMessageHandler
+    {
+        private const string AdditionalRoleId = "100000000000000006";
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            string path = request.RequestUri!.AbsolutePath;
+            string json = path switch
+            {
+                var value when value.EndsWith($"/guilds/{GuildId}", StringComparison.Ordinal) =>
+                    $$$"""{"id":"{{{GuildId}}}","name":"Synthetic guild","icon":null,"unexpected":"ignored"}""",
+                var value when value.EndsWith("/roles", StringComparison.Ordinal) => Roles(),
+                var value when value.EndsWith("/channels", StringComparison.Ordinal) => Channels(),
+                var value when value.EndsWith($"/members/{BotId}", StringComparison.Ordinal) =>
+                    $$$"""{"user":{"id":"{{{BotId}}}","username":"synthetic-bot","global_name":null,"bot":true,"avatar":null},"nick":null,"roles":["{{{RoleId}}}","{{{AdditionalRoleId}}}"],"premium_since":null,"deaf":false,"mute":false,"future_member_field":{"ignored":true}}""",
+                _ => "{}",
+            };
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json"),
+            });
+        }
+
+        private string Roles()
+        {
+            string everyonePermissions = malformedRolePermission
+                ? "not-a-permission-value"
+                : PermissionText(DiscordPermissions.ViewChannel | DiscordPermissions.SendMessages);
+            return $$$"""
+                [
+                  {"id":"{{{GuildId}}}","name":"@everyone","permissions":"{{{everyonePermissions}}}","mentionable":false,"tags":null,"future":"ignored"},
+                  {"id":"{{{RoleId}}}","name":"Attachment role","permissions":"{{{PermissionText(DiscordPermissions.EmbedLinks)}}}","mentionable":false,"tags":{"bot_id":"{{{BotId}}}"}},
+                  {"id":"{{{AdditionalRoleId}}}","name":"Media role","permissions":"{{{PermissionText(DiscordPermissions.AttachFiles)}}}","mentionable":true}
+                ]
+                """;
+        }
+
+        private string Channels()
+        {
+            string overwriteAllow = malformedOverwritePermission ? "invalid" : "0";
+            return $$$"""
+                [
+                  {"id":"100000000000000011","guild_id":"{{{GuildId}}}","name":"text","type":0,"permission_overwrites":[],"topic":null,"future":"ignored"},
+                  {"id":"100000000000000012","name":null,"type":5},
+                  {"id":"100000000000000013","guild_id":"{{{GuildId}}}","name":"category","type":4,"permission_overwrites":null},
+                  {"id":"100000000000000014","guild_id":"{{{GuildId}}}","name":"voice","type":2,"permission_overwrites":[]},
+                  {"id":"100000000000000015","guild_id":"{{{GuildId}}}","name":"stage","type":13,"permission_overwrites":[]},
+                  {"id":"100000000000000016","guild_id":"{{{GuildId}}}","name":"forum","type":15,"permission_overwrites":[]},
+                  {"id":"100000000000000017","guild_id":"{{{GuildId}}}","name":"media","type":16,"permission_overwrites":[]},
+                  {"id":false,"name":{"future":"shape"},"type":99,"permission_overwrites":"unsupported-but-ignored"},
+                  null,
+                  "future-channel-shape",
+                  {"id":"100000000000000018","guild_id":"{{{GuildId}}}","name":"hidden","type":0,"permission_overwrites":[{"id":"{{{GuildId}}}","type":0,"allow":null,"deny":"{{{PermissionText(DiscordPermissions.ViewChannel)}}}"}]},
+                  {"id":"100000000000000019","guild_id":"{{{GuildId}}}","name":"read-only","type":0,"permission_overwrites":[{"id":"{{{BotId}}}","type":1,"allow":"0","deny":"{{{PermissionText(DiscordPermissions.SendMessages)}}}"}]},
+                  {"id":"100000000000000020","guild_id":"{{{GuildId}}}","name":"member-wins","type":0,"permission_overwrites":[{"id":"{{{RoleId}}}","type":0,"allow":"0","deny":"{{{PermissionText(DiscordPermissions.SendMessages)}}}"},{"id":"{{{BotId}}}","type":1,"allow":"{{{PermissionText(DiscordPermissions.SendMessages)}}}","deny":"0"}]},
+                  {"id":"100000000000000021","guild_id":"{{{GuildId}}}","name":"malformed","type":0,"permission_overwrites":[{"id":"{{{GuildId}}}","type":0,"allow":"{{{overwriteAllow}}}","deny":"0"}]}
+                ]
+                """;
+        }
+    }
+
+    private sealed class DiscoveryFailureHandler(
+        HttpStatusCode channelStatus,
+        string channelBody = "{}") : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            bool isGuildResponse = request.RequestUri!.AbsolutePath.EndsWith(
+                $"/guilds/{GuildId}",
+                StringComparison.Ordinal);
+            return Task.FromResult(new HttpResponseMessage(
+                isGuildResponse ? HttpStatusCode.OK : channelStatus)
+            {
+                Content = new StringContent(
+                    isGuildResponse
+                        ? $$$"""{"id":"{{{GuildId}}}","name":"Synthetic guild"}"""
+                        : channelBody,
+                    Encoding.UTF8,
+                    "application/json"),
             });
         }
     }

@@ -42,6 +42,7 @@ public sealed class DiagnosticRecord
         {
             DiagnosticOperation.HttpRequest => "http-request",
             DiagnosticOperation.PersistenceInitialization => "persistence-initialization",
+            DiagnosticOperation.DiscordServerDiscovery => "discord-server-discovery",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(diagnosticEvent),
                 "The diagnostic operation is not supported."),

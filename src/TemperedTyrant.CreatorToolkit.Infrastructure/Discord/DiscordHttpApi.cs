@@ -39,7 +39,7 @@ internal sealed class DiscordHttpApi(HttpClient httpClient) : IDiscordApi
             throw new DiscordApiAuthenticationException();
         }
 
-        return new DiscordBotIdentity(user.Id, SafeName(user), application.Id);
+        return new DiscordBotIdentity(user.Id!, SafeName(user), application.Id!);
     }
 
     public async Task<IReadOnlyList<DiscordGuild>> ListGuildsAsync(
@@ -52,7 +52,7 @@ internal sealed class DiscordHttpApi(HttpClient httpClient) : IDiscordApi
             cancellationToken);
         return guilds
             .Where(value => DiscordSnowflake.IsValid(value.Id))
-            .Select(value => new DiscordGuild(value.Id, SafeSnapshot(value.Name, "Discord server"), value.Icon))
+            .Select(value => new DiscordGuild(value.Id!, SafeSnapshot(value.Name, "Discord server"), value.Icon))
             .ToArray();
     }
 
@@ -63,68 +63,63 @@ internal sealed class DiscordHttpApi(HttpClient httpClient) : IDiscordApi
         CancellationToken cancellationToken)
     {
         DiscordSnowflake.Require(guildId);
-        DiscordGuild? guild = (await ListGuildsAsync(token, cancellationToken))
-            .SingleOrDefault(value => value.Id == guildId);
-        if (guild is null)
+        DiscordGuildDto guildDto = await GetDiscoveryAsync<DiscordGuildDto>(
+            token,
+            $"guilds/{guildId}",
+            DiscordDiscoveryStage.GuildResponse,
+            cancellationToken);
+        if (!DiscordSnowflake.IsValid(guildDto.Id)
+            || !string.Equals(guildDto.Id, guildId, StringComparison.Ordinal))
         {
-            return null;
+            throw new DiscordServerInformationException(
+                DiscordDiscoveryStage.SnowflakeParsing,
+                DiscordServerInformationFailure.UnsupportedResponse);
         }
 
-        DiscordRoleDto[] roleDtos = await GetAsync<DiscordRoleDto[]>(
+        DiscordGuild guild = new(
+            guildDto.Id!,
+            SafeSnapshot(guildDto.Name, "Discord server"),
+            guildDto.Icon);
+
+        JsonElement[] channelDtos = await GetDiscoveryAsync<JsonElement[]>(
+            token,
+            $"guilds/{guildId}/channels",
+            DiscordDiscoveryStage.ChannelListDeserialization,
+            cancellationToken);
+        DiscordRoleDto[] roleDtos = await GetDiscoveryAsync<DiscordRoleDto[]>(
             token,
             $"guilds/{guildId}/roles",
+            DiscordDiscoveryStage.RoleListDeserialization,
             cancellationToken);
-        DiscordGuildMemberDto memberDto;
-        DiscordChannelDto[] channelDtos;
+        DiscordGuildMemberDto memberDto = await GetDiscoveryAsync<DiscordGuildMemberDto>(
+            token,
+            $"guilds/{guildId}/members/{identity.BotUserId}",
+            DiscordDiscoveryStage.BotMemberDeserialization,
+            cancellationToken);
+
         try
         {
-            memberDto = await GetAsync<DiscordGuildMemberDto>(
-                token,
-                $"guilds/{guildId}/members/{identity.BotUserId}",
-                cancellationToken);
-            channelDtos = await GetAsync<DiscordChannelDto[]>(
-                token,
-                $"guilds/{guildId}/channels",
-                cancellationToken);
+            DiscordRole[] roles = MapRoles(roleDtos);
+            DiscordGuildMember member = MapBotMember(memberDto, identity.BotUserId);
+            ValidateRoleAssignments(guild, member, roles);
+            DiscordChannel[] supportedChannels = MapSupportedChannels(channelDtos, guild.Id);
+            DiscordChannelCapability[] channels = supportedChannels
+                .Select(value => CalculatePermissions(guild, member, value, roles))
+                .Where(value => value.CanView && value.CanSend)
+                .OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            return new DiscordGuildDiscovery(guild, channels, roles, member);
         }
-        catch (DiscordApiNotFoundException)
+        catch (DiscordServerInformationException)
         {
-            return null;
+            throw;
         }
-
-        DiscordRole[] roles = roleDtos
-            .Where(value => DiscordSnowflake.IsValid(value.Id))
-            .Select(value => new DiscordRole(
-                value.Id,
-                SafeSnapshot(value.Name, "Discord role"),
-                value.Permissions,
-                value.Mentionable))
-            .ToArray();
-        DiscordGuildMember member = MapMember(memberDto);
-        DiscordChannelCapability[] channels = channelDtos
-            .Where(value => value.Type is 0 or 5 && DiscordSnowflake.IsValid(value.Id))
-            .Select(
-                value => DiscordPermissionCalculator.Calculate(
-                    guild,
-                    member,
-                    new DiscordChannel(
-                        value.Id,
-                        guild.Id,
-                        SafeSnapshot(value.Name, "Discord channel"),
-                        value.Type,
-                        value.PermissionOverwrites
-                            .Where(overwrite => DiscordSnowflake.IsValid(overwrite.Id))
-                            .Select(overwrite => new DiscordPermissionOverwrite(
-                                overwrite.Id,
-                                overwrite.Type,
-                                overwrite.Allow,
-                                overwrite.Deny))
-                            .ToArray()),
-                    roles))
-            .Where(value => value.CanView && value.CanSend)
-            .OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        return new DiscordGuildDiscovery(guild, channels, roles, member);
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            throw new DiscordServerInformationException(
+                DiscordDiscoveryStage.ViewModelGeneration,
+                DiscordServerInformationFailure.ProcessingFailed);
+        }
     }
 
     public async Task<IReadOnlyList<DiscordGuildMember>> SearchMembersAsync(
@@ -264,7 +259,8 @@ internal sealed class DiscordHttpApi(HttpClient httpClient) : IDiscordApi
     private async Task<T> GetAsync<T>(
         string token,
         string path,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool preserveDiscoveryFailure = false)
     {
         try
         {
@@ -286,9 +282,21 @@ internal sealed class DiscordHttpApi(HttpClient httpClient) : IDiscordApi
                 throw new DiscordApiNotFoundException();
             }
 
+            if (response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                await DrainBoundedAsync(response, MaximumErrorBytes, cancellationToken);
+                throw new DiscordApiForbiddenException();
+            }
+
             if (!response.IsSuccessStatusCode)
             {
                 await DrainBoundedAsync(response, MaximumErrorBytes, cancellationToken);
+                if ((int)response.StatusCode is >= 400 and < 500
+                    && response.StatusCode != HttpStatusCode.TooManyRequests)
+                {
+                    throw new DiscordApiUnsupportedResponseException();
+                }
+
                 throw new DiscordApiUnavailableException();
             }
 
@@ -301,6 +309,56 @@ internal sealed class DiscordHttpApi(HttpClient httpClient) : IDiscordApi
         catch (Exception exception) when (exception is HttpRequestException or IOException)
         {
             throw new DiscordApiUnavailableException();
+        }
+        catch (DiscordApiUnsupportedResponseException) when (!preserveDiscoveryFailure)
+        {
+            throw new DiscordApiUnavailableException();
+        }
+        catch (DiscordApiForbiddenException) when (!preserveDiscoveryFailure)
+        {
+            throw new DiscordApiUnavailableException();
+        }
+    }
+
+    private async Task<T> GetDiscoveryAsync<T>(
+        string token,
+        string path,
+        DiscordDiscoveryStage stage,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await GetAsync<T>(token, path, cancellationToken, preserveDiscoveryFailure: true);
+        }
+        catch (DiscordApiAuthenticationException)
+        {
+            throw new DiscordServerInformationException(
+                stage,
+                DiscordServerInformationFailure.AuthenticationFailed);
+        }
+        catch (DiscordApiNotFoundException)
+        {
+            throw new DiscordServerInformationException(
+                stage,
+                DiscordServerInformationFailure.NotInstalled);
+        }
+        catch (DiscordApiForbiddenException)
+        {
+            throw new DiscordServerInformationException(
+                stage,
+                DiscordServerInformationFailure.AccessDenied);
+        }
+        catch (DiscordApiUnsupportedResponseException)
+        {
+            throw new DiscordServerInformationException(
+                stage,
+                DiscordServerInformationFailure.UnsupportedResponse);
+        }
+        catch (DiscordApiUnavailableException)
+        {
+            throw new DiscordServerInformationException(
+                stage,
+                DiscordServerInformationFailure.TemporarilyUnavailable);
         }
     }
 
@@ -319,11 +377,11 @@ internal sealed class DiscordHttpApi(HttpClient httpClient) : IDiscordApi
         try
         {
             return JsonSerializer.Deserialize<T>(bytes, JsonOptions)
-                ?? throw new DiscordApiUnavailableException();
+                ?? throw new DiscordApiUnsupportedResponseException();
         }
         catch (JsonException)
         {
-            throw new DiscordApiUnavailableException();
+            throw new DiscordApiUnsupportedResponseException();
         }
     }
 
@@ -401,8 +459,215 @@ internal sealed class DiscordHttpApi(HttpClient httpClient) : IDiscordApi
         return new DiscordGuildMember(
             DiscordSnowflake.Require(user.Id),
             SafeSnapshot(value.Nick ?? user.GlobalName ?? user.Username, "Discord member"),
-            value.Roles.Where(DiscordSnowflake.IsValid).ToArray());
+            (value.Roles ?? []).Where(DiscordSnowflake.IsValid).ToArray());
     }
+
+    private static DiscordRole[] MapRoles(IReadOnlyList<DiscordRoleDto> values)
+    {
+        var roles = new List<DiscordRole>(values.Count);
+        foreach (DiscordRoleDto value in values)
+        {
+            if (!DiscordSnowflake.IsValid(value.Id))
+            {
+                throw Failure(DiscordDiscoveryStage.SnowflakeParsing);
+            }
+
+            string? permissions = OptionalString(value.Permissions);
+            if (permissions is null)
+            {
+                throw Failure(DiscordDiscoveryStage.PermissionBitParsing);
+            }
+
+            _ = ParsePermission(permissions);
+            roles.Add(new DiscordRole(
+                value.Id!,
+                SafeSnapshot(value.Name, "Discord role"),
+                permissions,
+                value.Mentionable));
+        }
+
+        return roles.ToArray();
+    }
+
+    private static DiscordGuildMember MapBotMember(
+        DiscordGuildMemberDto value,
+        string expectedBotId)
+    {
+        string userId = value.User?.Id ?? expectedBotId;
+        if (!DiscordSnowflake.IsValid(userId)
+            || !string.Equals(userId, expectedBotId, StringComparison.Ordinal))
+        {
+            throw Failure(DiscordDiscoveryStage.SnowflakeParsing);
+        }
+
+        string[] roleIds = value.Roles ?? [];
+        if (roleIds.Any(roleId => !DiscordSnowflake.IsValid(roleId)))
+        {
+            throw Failure(DiscordDiscoveryStage.SnowflakeParsing);
+        }
+
+        return new DiscordGuildMember(
+            userId,
+            SafeSnapshot(value.Nick ?? value.User?.GlobalName ?? value.User?.Username, "Discord bot"),
+            roleIds.Distinct(StringComparer.Ordinal).ToArray());
+    }
+
+    private static void ValidateRoleAssignments(
+        DiscordGuild guild,
+        DiscordGuildMember member,
+        IReadOnlyList<DiscordRole> roles)
+    {
+        HashSet<string> roleIds = roles.Select(value => value.Id).ToHashSet(StringComparer.Ordinal);
+        if (!roleIds.Contains(guild.Id) || member.RoleIds.Any(roleId => !roleIds.Contains(roleId)))
+        {
+            throw Failure(DiscordDiscoveryStage.RoleAssignment);
+        }
+    }
+
+    private static DiscordChannel[] MapSupportedChannels(
+        IReadOnlyList<JsonElement> values,
+        string guildId)
+    {
+        var channels = new List<DiscordChannel>();
+        foreach (JsonElement value in values)
+        {
+            if (value.ValueKind != JsonValueKind.Object
+                || !value.TryGetProperty("type", out JsonElement typeElement)
+                || !TryGetChannelType(typeElement, out int type)
+                || type is not (0 or 5))
+            {
+                continue;
+            }
+
+            value.TryGetProperty("id", out JsonElement idElement);
+            value.TryGetProperty("guild_id", out JsonElement guildElement);
+            value.TryGetProperty("name", out JsonElement nameElement);
+            value.TryGetProperty("permission_overwrites", out JsonElement overwriteElement);
+            string? channelId = OptionalString(idElement);
+            string? responseGuildId = OptionalString(guildElement);
+            if (!DiscordSnowflake.IsValid(channelId)
+                || (guildElement.ValueKind is not (
+                        JsonValueKind.Undefined or JsonValueKind.Null or JsonValueKind.String))
+                || (responseGuildId is not null
+                    && !string.Equals(responseGuildId, guildId, StringComparison.Ordinal)))
+            {
+                throw Failure(DiscordDiscoveryStage.SnowflakeParsing);
+            }
+
+            channels.Add(new DiscordChannel(
+                channelId!,
+                guildId,
+                SafeSnapshot(OptionalString(nameElement), "Discord channel"),
+                type,
+                MapOverwrites(overwriteElement)));
+        }
+
+        return channels.ToArray();
+    }
+
+    private static DiscordPermissionOverwrite[] MapOverwrites(JsonElement value)
+    {
+        if (value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        {
+            return [];
+        }
+
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            throw Failure(DiscordDiscoveryStage.ChannelOverwriteParsing);
+        }
+
+        var overwrites = new List<DiscordPermissionOverwrite>();
+        foreach (JsonElement item in value.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object
+                || !item.TryGetProperty("id", out JsonElement idElement)
+                || idElement.ValueKind != JsonValueKind.String
+                || !DiscordSnowflake.IsValid(idElement.GetString())
+                || !item.TryGetProperty("type", out JsonElement typeElement)
+                || !typeElement.TryGetInt32(out int type)
+                || type is not (0 or 1))
+            {
+                throw Failure(DiscordDiscoveryStage.ChannelOverwriteParsing);
+            }
+
+            string allow = OptionalPermission(item, "allow");
+            string deny = OptionalPermission(item, "deny");
+            overwrites.Add(new DiscordPermissionOverwrite(
+                idElement.GetString()!,
+                type,
+                allow,
+                deny));
+        }
+
+        return overwrites.ToArray();
+    }
+
+    private static string OptionalPermission(JsonElement value, string propertyName)
+    {
+        if (!value.TryGetProperty(propertyName, out JsonElement element)
+            || element.ValueKind == JsonValueKind.Null)
+        {
+            return "0";
+        }
+
+        string? permission = OptionalString(element);
+        if (permission is null)
+        {
+            throw Failure(DiscordDiscoveryStage.ChannelOverwriteParsing);
+        }
+
+        try
+        {
+            _ = DiscordPermissionCalculator.ParsePermission(permission);
+        }
+        catch (DiscordPermissionDataException)
+        {
+            throw Failure(DiscordDiscoveryStage.ChannelOverwriteParsing);
+        }
+
+        return permission;
+    }
+
+    private static DiscordChannelCapability CalculatePermissions(
+        DiscordGuild guild,
+        DiscordGuildMember member,
+        DiscordChannel channel,
+        IReadOnlyList<DiscordRole> roles)
+    {
+        try
+        {
+            return DiscordPermissionCalculator.Calculate(guild, member, channel, roles);
+        }
+        catch (DiscordPermissionDataException)
+        {
+            throw Failure(DiscordDiscoveryStage.EffectivePermissionCalculation);
+        }
+    }
+
+    private static System.Numerics.BigInteger ParsePermission(string value)
+    {
+        try
+        {
+            return DiscordPermissionCalculator.ParsePermission(value);
+        }
+        catch (DiscordPermissionDataException)
+        {
+            throw Failure(DiscordDiscoveryStage.PermissionBitParsing);
+        }
+    }
+
+    private static bool TryGetChannelType(JsonElement value, out int type)
+    {
+        type = default;
+        return value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out type);
+    }
+
+    private static string? OptionalString(JsonElement value) =>
+        value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    private static DiscordServerInformationException Failure(DiscordDiscoveryStage stage) =>
+        new(stage, DiscordServerInformationFailure.UnsupportedResponse);
 
     private static string SafeName(DiscordUserDto user) =>
         SafeSnapshot(user.GlobalName ?? user.Username, "Discord bot");
@@ -414,47 +679,37 @@ internal sealed class DiscordHttpApi(HttpClient httpClient) : IDiscordApi
     }
 
     private sealed record DiscordUserDto(
-        [property: JsonPropertyName("id")] string Id,
-        [property: JsonPropertyName("username")] string Username,
+        [property: JsonPropertyName("id")] string? Id,
+        [property: JsonPropertyName("username")] string? Username,
         [property: JsonPropertyName("global_name")] string? GlobalName,
         [property: JsonPropertyName("bot")] bool Bot);
 
     private sealed record DiscordApplicationDto(
-        [property: JsonPropertyName("id")] string Id,
+        [property: JsonPropertyName("id")] string? Id,
         [property: JsonPropertyName("bot")] DiscordUserDto? Bot);
 
     private sealed record DiscordGuildDto(
-        [property: JsonPropertyName("id")] string Id,
-        [property: JsonPropertyName("name")] string Name,
+        [property: JsonPropertyName("id")] string? Id,
+        [property: JsonPropertyName("name")] string? Name,
         [property: JsonPropertyName("icon")] string? Icon);
 
     private sealed record DiscordRoleDto(
-        [property: JsonPropertyName("id")] string Id,
-        [property: JsonPropertyName("name")] string Name,
-        [property: JsonPropertyName("permissions")] string Permissions,
+        [property: JsonPropertyName("id")] string? Id,
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("permissions")] JsonElement Permissions,
         [property: JsonPropertyName("mentionable")] bool Mentionable);
 
     private sealed record DiscordGuildMemberDto(
         [property: JsonPropertyName("user")] DiscordUserDto? User,
         [property: JsonPropertyName("nick")] string? Nick,
-        [property: JsonPropertyName("roles")] string[] Roles);
-
-    private sealed record DiscordChannelDto(
-        [property: JsonPropertyName("id")] string Id,
-        [property: JsonPropertyName("guild_id")] string GuildId,
-        [property: JsonPropertyName("name")] string Name,
-        [property: JsonPropertyName("type")] int Type,
-        [property: JsonPropertyName("permission_overwrites")]
-        DiscordOverwriteDto[] PermissionOverwrites);
-
-    private sealed record DiscordOverwriteDto(
-        [property: JsonPropertyName("id")] string Id,
-        [property: JsonPropertyName("type")] int Type,
-        [property: JsonPropertyName("allow")] string Allow,
-        [property: JsonPropertyName("deny")] string Deny);
+        [property: JsonPropertyName("roles")] string[]? Roles);
 
     private sealed record DiscordMessageResponseDto(
         [property: JsonPropertyName("id")] string Id);
 
     private sealed class DiscordApiNotFoundException : Exception;
+
+    private sealed class DiscordApiForbiddenException : Exception;
+
+    private sealed class DiscordApiUnsupportedResponseException : Exception;
 }

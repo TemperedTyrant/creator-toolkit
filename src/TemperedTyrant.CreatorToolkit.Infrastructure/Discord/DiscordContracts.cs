@@ -53,6 +53,58 @@ public sealed record DiscordGuildDiscovery(
     IReadOnlyList<DiscordRole> Roles,
     DiscordGuildMember BotMember);
 
+public enum DiscordDiscoveryStage
+{
+    GuildResponse = 1,
+    ChannelListDeserialization = 2,
+    RoleListDeserialization = 3,
+    BotMemberDeserialization = 4,
+    SnowflakeParsing = 5,
+    PermissionBitParsing = 6,
+    RoleAssignment = 7,
+    ChannelOverwriteParsing = 8,
+    EffectivePermissionCalculation = 9,
+    SupportedChannelFiltering = 10,
+    ViewModelGeneration = 11,
+}
+
+public enum DiscordServerInformationFailure
+{
+    AuthenticationFailed = 1,
+    NotInstalled = 2,
+    AccessDenied = 3,
+    UnsupportedResponse = 4,
+    TemporarilyUnavailable = 5,
+    ProcessingFailed = 6,
+}
+
+public sealed class DiscordServerInformationException(
+    DiscordDiscoveryStage stage,
+    DiscordServerInformationFailure failure,
+    string? diagnosticReference = null) : Exception
+{
+    public DiscordDiscoveryStage Stage { get; } = stage;
+
+    public DiscordServerInformationFailure Failure { get; } = failure;
+
+    public string? DiagnosticReference { get; } = diagnosticReference;
+
+    public string SafeMessage => Failure switch
+    {
+        DiscordServerInformationFailure.AuthenticationFailed =>
+            "Discord bot authentication failed.",
+        DiscordServerInformationFailure.NotInstalled =>
+            "The bot is no longer installed in this Discord server.",
+        DiscordServerInformationFailure.AccessDenied =>
+            "Discord denied access to server information.",
+        DiscordServerInformationFailure.UnsupportedResponse =>
+            "Discord returned unsupported server information.",
+        DiscordServerInformationFailure.TemporarilyUnavailable =>
+            "Discord is temporarily unavailable.",
+        _ => "Discord server information could not be processed.",
+    };
+}
+
 public sealed record DiscordConnectionListItem(
     Guid Id,
     string Name,

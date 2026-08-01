@@ -119,11 +119,11 @@ public static class DiscordPermissionCalculator
         permissions |= ParsePermission(overwrite.Allow);
     }
 
-    private static BigInteger ParsePermission(string value) =>
+    internal static BigInteger ParsePermission(string value) =>
         BigInteger.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out BigInteger result)
             && result >= BigInteger.Zero
                 ? result
-                : BigInteger.Zero;
+                : throw new DiscordPermissionDataException();
 
     private static bool Has(BigInteger permissions, DiscordPermissions permission)
     {
@@ -131,6 +131,8 @@ public static class DiscordPermissionCalculator
         return (permissions & flag) == flag;
     }
 }
+
+internal sealed class DiscordPermissionDataException : Exception;
 
 public static class DiscordNonce
 {

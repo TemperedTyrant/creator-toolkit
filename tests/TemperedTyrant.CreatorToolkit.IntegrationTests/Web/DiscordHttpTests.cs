@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using TemperedTyrant.CreatorToolkit.Core.Announcements;
+using TemperedTyrant.CreatorToolkit.Core.Diagnostics;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Discord;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
@@ -182,22 +183,108 @@ public sealed partial class AnnouncementHttpTests
         Assert.Empty(api.SentMessages);
     }
 
-    private sealed class HttpDiscordApi : IDiscordApi
+    [Fact]
+    public async Task DiscoveryProcessingFailureUsesSafeCategoryStageAndDiagnosticReference()
+    {
+        const string guildNameCanary = "guild-name-canary-never-log";
+        List<string> logs = [];
+        var api = new HttpDiscordApi(guildNameCanary);
+        await using CreatorToolkitWebFactory factory = new(
+            services =>
+            {
+                services.RemoveAll<IDiscordApi>();
+                services.AddSingleton<IDiscordApi>(api);
+                services.AddLogging(logging => logging.AddProvider(new TestLoggerProvider(logs)));
+            });
+        Guid ownerId = await InitializeOwnerAsync(factory.Services);
+        Guid connectionId;
+        await using (AsyncServiceScope setup = factory.Services.CreateAsyncScope())
+        {
+            DiscordOperationResult created = await setup.ServiceProvider
+                .GetRequiredService<IDiscordConfigurationService>()
+                .CreateAsync("Synthetic Discord", DiscordTokenCanary, ownerId);
+            connectionId = Assert.IsType<Guid>(created.Id);
+        }
+
+        api.DiscoveryFailure = new DiscordServerInformationException(
+            DiscordDiscoveryStage.ChannelListDeserialization,
+            DiscordServerInformationFailure.UnsupportedResponse);
+        using HttpClient owner = CreateClient(factory);
+        await LoginAsync(owner, "owner-local", OwnerPassword);
+
+        HttpResponseMessage response = await owner.GetAsync(
+            $"/Destinations/Discord/{connectionId}?GuildId={DiscordGuildId}");
+        string html = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Discord returned unsupported server information.", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Validate the bot credential", html, StringComparison.Ordinal);
+        Assert.Matches("CTK-[A-F0-9]{32}", html);
+        string capturedLogs = string.Join('\n', logs);
+        Assert.Contains("Stage: ChannelListDeserialization", capturedLogs, StringComparison.Ordinal);
+        Assert.Contains("category: UnsupportedResponse", capturedLogs, StringComparison.Ordinal);
+        Assert.Contains(connectionId.ToString(), capturedLogs, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(DiscordGuildId, capturedLogs, StringComparison.Ordinal);
+        Assert.False(
+            capturedLogs.Contains(guildNameCanary, StringComparison.Ordinal),
+            "The synthetic guild-name canary appeared in captured diagnostics.");
+        Assert.False(
+            capturedLogs.Contains(DiscordTokenCanary, StringComparison.Ordinal),
+            "The synthetic token canary appeared in captured diagnostics.");
+
+        await using AsyncServiceScope verification = factory.Services.CreateAsyncScope();
+        DiagnosticRecord record = await verification.ServiceProvider
+            .GetRequiredService<CreatorToolkitDbContext>()
+            .DiagnosticRecords
+            .SingleAsync(value => value.Operation == "discord-server-discovery");
+        Assert.Equal("infrastructure", record.Category);
+        Assert.Equal("invalid-operation", record.ExceptionType);
+        Assert.DoesNotContain(guildNameCanary, record.Reference, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(DiscordServerInformationFailure.AuthenticationFailed, "Discord bot authentication failed.")]
+    [InlineData(DiscordServerInformationFailure.NotInstalled, "The bot is no longer installed in this Discord server.")]
+    [InlineData(DiscordServerInformationFailure.AccessDenied, "Discord denied access to server information.")]
+    [InlineData(DiscordServerInformationFailure.UnsupportedResponse, "Discord returned unsupported server information.")]
+    [InlineData(DiscordServerInformationFailure.TemporarilyUnavailable, "Discord is temporarily unavailable.")]
+    [InlineData(DiscordServerInformationFailure.ProcessingFailed, "Discord server information could not be processed.")]
+    public void DiscoveryFailuresHaveDistinctFixedSafeMessages(
+        DiscordServerInformationFailure failure,
+        string expected)
+    {
+        var exception = new DiscordServerInformationException(
+            DiscordDiscoveryStage.GuildResponse,
+            failure);
+
+        Assert.Equal(expected, exception.SafeMessage);
+    }
+
+    private sealed class HttpDiscordApi(string guildName = "Creators") : IDiscordApi
     {
         internal List<DiscordMessageRequest> SentMessages { get; } = [];
+
+        internal Exception? DiscoveryFailure { get; set; }
 
         public Task<DiscordBotIdentity> ValidateBotAsync(string token, CancellationToken cancellationToken) =>
             Task.FromResult(new DiscordBotIdentity("400000000000000003", "Creator Toolkit bot", "400000000000000004"));
 
         public Task<IReadOnlyList<DiscordGuild>> ListGuildsAsync(string token, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<DiscordGuild>>([new DiscordGuild(DiscordGuildId, "Creators")]);
+            Task.FromResult<IReadOnlyList<DiscordGuild>>([new DiscordGuild(DiscordGuildId, guildName)]);
 
-        public Task<DiscordGuildDiscovery?> DiscoverGuildAsync(string token, DiscordBotIdentity identity, string guildId, CancellationToken cancellationToken) =>
-            Task.FromResult<DiscordGuildDiscovery?>(new DiscordGuildDiscovery(
-                new DiscordGuild(DiscordGuildId, "Creators"),
+        public Task<DiscordGuildDiscovery?> DiscoverGuildAsync(string token, DiscordBotIdentity identity, string guildId, CancellationToken cancellationToken)
+        {
+            if (DiscoveryFailure is not null)
+            {
+                return Task.FromException<DiscordGuildDiscovery?>(DiscoveryFailure);
+            }
+
+            return Task.FromResult<DiscordGuildDiscovery?>(new DiscordGuildDiscovery(
+                new DiscordGuild(DiscordGuildId, guildName),
                 [new DiscordChannelCapability(DiscordChannelId, "announcements", 0, true, true, true, true, true)],
                 [new DiscordRole(DiscordGuildId, "everyone", DiscordPermissionCalculator.StandardInstallPermissions.ToString(CultureInfo.InvariantCulture), false)],
                 new DiscordGuildMember(identity.BotUserId, "Creator Toolkit bot", [])));
+        }
 
         public Task<IReadOnlyList<DiscordGuildMember>> SearchMembersAsync(string token, string guildId, string query, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<DiscordGuildMember>>([]);

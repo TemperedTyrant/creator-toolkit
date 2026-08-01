@@ -336,6 +336,10 @@ public sealed class PublishDiscordModel(
             {
                 Discovery = await configuration.DiscoverGuildAsync(ConnectionId, GuildId, token);
             }
+            catch (DiscordServerInformationException exception)
+            {
+                ModelState.AddModelError(string.Empty, exception.SafeMessage);
+            }
             catch (Exception exception) when (exception is DiscordApiAuthenticationException or DiscordApiUnavailableException)
             {
                 ModelState.AddModelError(string.Empty, "Live Discord server information is unavailable.");
