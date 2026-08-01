@@ -1,0 +1,65 @@
+name: Feature request
+description: Propose a focused product or maintenance improvement.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep proposals aligned with the current roadmap and checkpoint scope.
+
+        **Do not paste passwords; bootstrap, activation, or recovery capabilities; cookies or authorization headers; webhook URLs; connection strings; `.env` contents; SQLite database, WAL, or SHM files; Data Protection keys; private IP addressing unless genuinely necessary and sanitized; or personal information.**
+
+        Do not disclose suspected vulnerabilities here. Follow [SECURITY.md](https://github.com/TemperedTyrant/creator-toolkit/security/policy) and use [GitHub private vulnerability reporting](https://github.com/TemperedTyrant/creator-toolkit/security/advisories/new).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the creator or maintainer need without embedding private installation data.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Describe observable behavior rather than prescribing a large architecture.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: input
+    id: checkpoint
+    attributes:
+      label: Related checkpoint, roadmap item, or issue
+      placeholder: Checkpoint or issue reference, if known
+
+  - type: textarea
+    id: security
+    attributes:
+      label: Security, authorization, and data-handling implications
+      description: Identify expected trust-boundary or secret-handling effects without disclosing real sensitive values.
+    validations:
+      required: true
+
+  - type: textarea
+    id: deployment
+    attributes:
+      label: Container or deployment impact
+      description: State whether the proposal changes the single-container deployment, persistence, configuration, or supported architectures.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: safe-request
+    attributes:
+      label: Safe-request confirmation
+      options:
+        - label: This request contains no secrets, private data, databases, key material, or unnecessary private addressing.
+          required: true

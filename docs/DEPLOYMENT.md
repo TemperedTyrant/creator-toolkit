@@ -159,15 +159,17 @@ The Dockerfile restores and publishes with the official .NET SDK
 `10.0.110` SDK and the container's `10.0.302` SDK, but only within .NET 10.0; it
 cannot select .NET 11. Local SDK feature bands may therefore differ and local
 builds are not claimed to be exactly reproducible. The digest-pinned builder is
-the reviewed deterministic container build environment. Checkpoint 10 CI will
-explicitly verify that reviewed SDK/container build combination.
+the reviewed deterministic container build environment. The repository
+validation workflow is configured to verify that reviewed SDK/container build
+combination without publishing an image.
 
 Both base-image tags are pinned to reviewed immutable multi-platform
 manifest-list digests, and those manifests include `linux/amd64` and
 `linux/arm64` children. The Dockerfile retains architecture-neutral application
-build behavior. Base-manifest inspection is not proof of a complete ARM64
-application build: actual multi-platform application build verification remains
-pending checkpoint 10 CI because it could not be run on the current host.
+build behavior. Base-manifest inspection alone is not treated as proof: the
+`container-validation` GitHub Actions job performs a complete no-push Buildx
+build for both architectures. ARM64 application verification remains pending
+until the first post-push run of that job succeeds.
 
 Only published application output and the readable `LICENSE` and
 `THIRD_PARTY_NOTICES.md` files enter the final image. The latter accompanies the

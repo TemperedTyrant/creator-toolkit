@@ -43,9 +43,9 @@ The baseline .NET commands are:
 
 ```sh
 dotnet restore
-dotnet build --no-restore
-dotnet test --no-build
-dotnet format --verify-no-changes
+dotnet build --no-restore --disable-build-servers -m:1
+dotnet test --no-build --disable-build-servers -m:1
+dotnet format --verify-no-changes --no-restore
 docker compose config --quiet
 ```
 
@@ -61,6 +61,35 @@ pwsh tests/TemperedTyrant.CreatorToolkit.IntegrationTests/bin/Debug/net10.0/play
 ```
 
 This browser is test tooling only and is not an application runtime dependency.
+
+## Automated validation
+
+The `Repository validation` workflow is configured for pull requests targeting
+`main`, pushes to `main`, and manual runs. Its stable checks are:
+
+- `dotnet-validation`: restore, warning-free build, matching Playwright Chromium,
+  all unit/integration/browser tests, formatting, EF model drift, vulnerable
+  packages, deprecated production packages, and whitespace;
+- `container-validation`: Compose validation/native smoke testing plus complete
+  Buildx application builds for `linux/amd64` and `linux/arm64`; and
+- `dependency-review`: the pull-request dependency delta, failing for newly
+  introduced high or critical known vulnerabilities.
+
+Validation failures are required failures, not informational checks. Reproduce
+the named command locally, correct the underlying code, formatting, migration,
+dependency, or container problem, and rerun the complete affected job. Do not
+hide failures with warning-only settings or unrelated generated changes.
+
+The production-project deprecation audit deliberately excludes the test
+projects. NuGet classifies the existing xUnit 2 packages as legacy; migration to
+xUnit v3 is a separately reviewed checkpoint-11 consideration, not an automatic
+checkpoint-10 package substitution.
+
+Dependabot checks NuGet, the Dockerfile base images, and GitHub Actions weekly
+with small pull-request limits and narrowly related groups. It uses Dependabot's
+default `dependencies` and ecosystem labels, which GitHub creates when needed.
+There is no auto-merge behavior. Dependabot alerts and security updates remain
+repository settings rather than effects of `.github/dependabot.yml`.
 
 Some operating-system distributions package .NET reference packs without
 optional NuGet package-pruning metadata. `Directory.Build.props` enables
