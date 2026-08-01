@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using TemperedTyrant.CreatorToolkit.Core.Announcements;
 using TemperedTyrant.CreatorToolkit.Core.Audit;
+using TemperedTyrant.CreatorToolkit.Core.Publications;
 using TemperedTyrant.CreatorToolkit.Core.Security;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Publications;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Security;
 
 namespace TemperedTyrant.CreatorToolkit.Infrastructure.Discord;
@@ -12,7 +14,8 @@ internal sealed class DiscordPublishingService(
     IProtectedSecretValueResolver secretResolver,
     IDiscordApi discordApi,
     IAuditWriter auditWriter,
-    DiscordPublishingOptions options) : IDiscordPublishingService
+    PublicationPayloadProtector payloadProtector,
+    TimeProvider timeProvider) : IDiscordPublishingService
 {
     public async Task<DiscordPublishContext?> GetContextAsync(
         Guid announcementId,
@@ -121,34 +124,55 @@ internal sealed class DiscordPublishingService(
                 cancellationToken);
     }
 
-    public async Task<DiscordPublicationResult> PublishAsync(
+    public async Task ValidateReviewAsync(
         DiscordPublishRequest request,
         bool canUseMassMentions,
-        Guid actorUserId,
+        DiscordGuildDiscovery discovery,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.SubmissionId == Guid.Empty)
+        ArgumentNullException.ThrowIfNull(discovery);
+        ValidateRequestShape(request, canUseMassMentions);
+        _ = BuildMessage(request, request.Mentions.Build());
+        if (!string.Equals(discovery.Guild.Id, request.GuildId, StringComparison.Ordinal))
         {
             throw new DiscordPublicationValidationException(
-                "Reload the publication form before sending.");
+                "Reload the live Discord server information before reviewing this publication.");
         }
 
-        if (request.DestinationIds.Count is < 1 or > 10)
+        Guid[] selectedIds = request.DestinationIds.Distinct().ToArray();
+        DiscordDestination[] destinations = await dbContext.DiscordDestinations.AsNoTracking()
+            .Where(value => selectedIds.Contains(value.Id))
+            .ToArrayAsync(cancellationToken);
+        if (destinations.Length != selectedIds.Length
+            || destinations.Any(value => !value.Enabled
+                || value.DiscordConnectionId != request.ConnectionId
+                || value.GuildId != request.GuildId))
         {
             throw new DiscordPublicationValidationException(
-                "Select between 1 and 10 Discord channels.");
+                "One or more selected Discord destinations are unavailable or belong to another server.");
         }
 
-        Announcement? announcement = await dbContext.Announcements
-            .AsNoTracking()
-            .SingleOrDefaultAsync(value => value.Id == request.AnnouncementId, cancellationToken);
-        if (announcement is null
-            || announcement.Status != AnnouncementStatus.Draft
-            || announcement.Revision != request.AnnouncementRevision)
+        Dictionary<string, DiscordChannelCapability> liveChannels = discovery.Channels
+            .ToDictionary(value => value.Id, StringComparer.Ordinal);
+        foreach (DiscordDestination destination in destinations)
         {
-            throw new DiscordPublicationValidationException(
-                "The announcement changed or is no longer a Draft. Review it again before publishing.");
+            if (!liveChannels.TryGetValue(destination.ChannelId, out DiscordChannelCapability? channel)
+                || !channel.CanView
+                || !channel.CanSend)
+            {
+                throw new DiscordPublicationValidationException(
+                    "The bot can no longer send to every selected Discord channel.");
+            }
+
+            if (request.Mode == DiscordMessageMode.Embed && !channel.CanEmbed
+                || request.UploadedImage is not null && !channel.CanAttach)
+            {
+                throw new DiscordPublicationValidationException(
+                    "The selected Discord channels no longer support the reviewed message.");
+            }
+
+            _ = ValidateLiveMentions(request, channel, discovery.Roles);
         }
 
         DiscordConnection? connection = await GetConnectionAsync(
@@ -160,270 +184,192 @@ internal sealed class DiscordPublishingService(
                 "The selected Discord connection is unavailable.");
         }
 
-        Guid[] selectedIds = request.DestinationIds.Distinct().ToArray();
-        if (selectedIds.Length != request.DestinationIds.Count)
+        foreach (string userId in request.Mentions.UserIds.Distinct(StringComparer.Ordinal))
         {
-            throw new DiscordPublicationValidationException(
-                "Each Discord channel may be selected only once.");
+            DiscordGuildMember? member = await UseTokenAsync(
+                connection,
+                (token, ct) => discordApi.GetMemberAsync(token, request.GuildId, userId, ct),
+                cancellationToken);
+            if (member is null)
+            {
+                throw new DiscordPublicationValidationException(
+                    "A selected Discord member is no longer in the server.");
+            }
+        }
+    }
+
+    public async Task<DiscordPublicationEnqueueResult> EnqueueAsync(
+        DiscordPublishRequest request,
+        bool canUseMassMentions,
+        Guid actorUserId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ValidateRequestShape(request, canUseMassMentions);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+        Guid? existing = await dbContext.Publications.AsNoTracking()
+            .Where(value => value.SubmissionId == request.SubmissionId
+                && value.RequestedByUserId == actorUserId)
+            .Select(value => (Guid?)value.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (existing is not null)
+        {
+            return new DiscordPublicationEnqueueResult(existing.Value, true);
         }
 
-        DiscordDestination[] destinations = await dbContext.DiscordDestinations
-            .AsNoTracking()
+        Announcement? announcement = await dbContext.Announcements.AsNoTracking()
+            .SingleOrDefaultAsync(value => value.Id == request.AnnouncementId, cancellationToken);
+        if (announcement is null
+            || announcement.Status != AnnouncementStatus.Draft
+            || announcement.Revision != request.AnnouncementRevision)
+        {
+            throw new DiscordPublicationValidationException(
+                "The announcement changed or is no longer a Draft. Review it again before publishing.");
+        }
+
+        DiscordConnection? connection = await GetConnectionAsync(request.ConnectionId, cancellationToken);
+        if (connection is null || !connection.Enabled)
+        {
+            throw new DiscordPublicationValidationException(
+                "The selected Discord connection is unavailable.");
+        }
+
+        Guid[] selectedIds = request.DestinationIds.Distinct().ToArray();
+        DiscordDestination[] destinations = await dbContext.DiscordDestinations.AsNoTracking()
             .Where(value => selectedIds.Contains(value.Id))
-            .OrderBy(value => value.ChannelNameSnapshot)
+            .OrderBy(value => value.Id)
             .ToArrayAsync(cancellationToken);
         if (destinations.Length != selectedIds.Length
-            || destinations.Any(value =>
-                !value.Enabled
-                || value.DiscordConnectionId != connection.Id
+            || destinations.Any(value => !value.Enabled
+                || value.DiscordConnectionId != request.ConnectionId
                 || value.GuildId != request.GuildId))
         {
             throw new DiscordPublicationValidationException(
                 "One or more selected Discord destinations are unavailable or belong to another server.");
         }
 
-        await WriteAuditAsync(
-            AuditEventCode.DiscordPublicationRequested,
+        _ = BuildMessage(request, request.Mentions.Build());
+        DateTimeOffset now = timeProvider.GetUtcNow();
+        Guid publicationId = Guid.NewGuid();
+        Publication publication = Publication.Create(
+            publicationId,
+            request.AnnouncementId,
+            request.AnnouncementRevision,
+            request.SubmissionId,
             actorUserId,
-            cancellationToken);
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        using CancellationTokenSource timeout = new(options.OverallTimeout);
-        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            timeout.Token);
-        try
-        {
-            return await UseTokenAsync(
-                connection,
-                (token, ct) => PublishWithTokenAsync(
-                    token,
-                    connection,
-                    destinations,
-                    request,
-                    canUseMassMentions,
-                    actorUserId,
-                    cancellationToken,
-                    ct),
-                linked.Token);
-        }
-        catch (OperationCanceledException)
-            when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-        {
-            return await CompleteWithoutSendingAsync(
-                request.SubmissionId,
-                destinations,
-                DiscordDeliveryStatus.TimedOut,
-                actorUserId);
-        }
-        catch (DiscordApiAuthenticationException)
-        {
-            return await CompleteWithoutSendingAsync(
-                request.SubmissionId,
-                destinations,
-                DiscordDeliveryStatus.AuthenticationFailed,
-                actorUserId);
-        }
-        catch (DiscordApiUnavailableException)
-        {
-            return await CompleteWithoutSendingAsync(
-                request.SubmissionId,
-                destinations,
-                DiscordDeliveryStatus.DiscordUnavailable,
-                actorUserId);
-        }
-        catch (DiscordServerInformationException exception)
-        {
-            DiscordDeliveryStatus status = exception.Failure switch
-            {
-                DiscordServerInformationFailure.AuthenticationFailed =>
-                    DiscordDeliveryStatus.AuthenticationFailed,
-                DiscordServerInformationFailure.NotInstalled =>
-                    DiscordDeliveryStatus.DestinationUnavailable,
-                DiscordServerInformationFailure.AccessDenied =>
-                    DiscordDeliveryStatus.MissingPermission,
-                _ => DiscordDeliveryStatus.DiscordUnavailable,
-            };
-            return await CompleteWithoutSendingAsync(
-                request.SubmissionId,
-                destinations,
-                status,
-                actorUserId);
-        }
-    }
-
-    private async Task<DiscordPublicationResult> PublishWithTokenAsync(
-        string token,
-        DiscordConnection connection,
-        IReadOnlyList<DiscordDestination> destinations,
-        DiscordPublishRequest request,
-        bool canUseMassMentions,
-        Guid actorUserId,
-        CancellationToken requestCancellationToken,
-        CancellationToken cancellationToken)
-    {
-        DiscordGuildDiscovery? discovery = await discordApi.DiscoverGuildAsync(
-            token,
-            new DiscordBotIdentity(
-                connection.BotUserId,
-                connection.BotUsernameSnapshot,
-                connection.ApplicationId),
-            request.GuildId,
-            cancellationToken);
-        if (discovery is null)
-        {
-            throw new DiscordPublicationValidationException(
-                "The bot is no longer installed in the selected Discord server.");
-        }
-
-        Dictionary<string, DiscordChannelCapability> liveChannels = discovery.Channels
-            .ToDictionary(value => value.Id, StringComparer.Ordinal);
-        if (destinations.Any(value => !liveChannels.ContainsKey(value.ChannelId)))
-        {
-            throw new DiscordPublicationValidationException(
-                "One or more selected channels are no longer available to the bot.");
-        }
-
-        DiscordMentionBuildResult mentions = ValidateMentions(
-            request,
-            canUseMassMentions,
-            destinations,
-            liveChannels,
-            discovery.Roles);
-        foreach (string userId in request.Mentions.UserIds.Distinct(StringComparer.Ordinal))
-        {
-            if (await discordApi.GetMemberAsync(
-                token,
-                request.GuildId,
-                DiscordSnowflake.Require(userId),
-                cancellationToken) is null)
-            {
-                throw new DiscordPublicationValidationException(
-                    "A selected Discord member is no longer in the server.");
-            }
-        }
-
-        DiscordMessageRequest message = BuildMessage(request, mentions);
-        if (request.Mode == DiscordMessageMode.Embed
-            && destinations.Any(value => !liveChannels[value.ChannelId].CanEmbed))
-        {
-            throw new DiscordPublicationValidationException(
-                "The bot cannot embed links in every selected channel.");
-        }
-
-        if (request.UploadedImage is not null
-            && destinations.Any(value => !liveChannels[value.ChannelId].CanAttach))
-        {
-            throw new DiscordPublicationValidationException(
-                "The bot cannot attach files in every selected channel.");
-        }
-
-        bool announcementIsCurrent = await dbContext.Announcements
-            .AsNoTracking()
-            .AnyAsync(
-                value => value.Id == request.AnnouncementId
-                    && value.Status == AnnouncementStatus.Draft
-                    && value.Revision == request.AnnouncementRevision,
-                cancellationToken);
-        if (!announcementIsCurrent)
-        {
-            throw new DiscordPublicationValidationException(
-                "The announcement changed or is no longer a Draft. Review it again before publishing.");
-        }
-
-        List<DiscordDeliveryResult> results = [];
-        bool authenticationFailed = false;
+            destinations.Length,
+            now);
+        dbContext.Publications.Add(publication);
         foreach (DiscordDestination destination in destinations)
         {
-            DiscordApiSendResult sent;
-            if (authenticationFailed)
-            {
-                sent = new DiscordApiSendResult(DiscordDeliveryStatus.AuthenticationFailed);
-            }
-            else
-            {
-                DiscordMessageRequest channelMessage = message with
-                {
-                    Nonce = DiscordNonce.Create(request.SubmissionId, destination.ChannelId),
-                };
-                try
-                {
-                    sent = await discordApi.SendMessageAsync(
-                        token,
-                        destination.ChannelId,
-                        channelMessage,
-                        request.UploadedImage,
-                        cancellationToken);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    sent = new DiscordApiSendResult(
-                        requestCancellationToken.IsCancellationRequested
-                            ? DiscordDeliveryStatus.Cancelled
-                            : DiscordDeliveryStatus.TimedOut);
-                }
-                catch (DiscordApiUnavailableException)
-                {
-                    sent = new DiscordApiSendResult(DiscordDeliveryStatus.DiscordUnavailable);
-                }
-            }
-
-            authenticationFailed |= sent.Status == DiscordDeliveryStatus.AuthenticationFailed;
-            results.Add(
-                new DiscordDeliveryResult(
-                    destination.Id,
-                    destination.GuildNameSnapshot,
-                    destination.ChannelNameSnapshot,
-                    sent.Status,
-                    sent.MessageId,
-                    CorrectiveAction(sent.Status)));
-            await WriteAuditAsync(
-                sent.Status == DiscordDeliveryStatus.Success
-                    ? AuditEventCode.DiscordPublicationChannelSucceeded
-                    : AuditEventCode.DiscordPublicationChannelFailed,
-                actorUserId,
-                CancellationToken.None,
-                sent.Status == DiscordDeliveryStatus.Success
-                    ? AuditOutcome.Succeeded
-                    : AuditOutcome.Failed);
-            await dbContext.SaveChangesAsync(CancellationToken.None);
+            dbContext.PublicationDeliveries.Add(PublicationDelivery.Create(
+                Guid.NewGuid(),
+                publicationId,
+                destination.Id,
+                destination.ChannelId,
+                destination.GuildNameSnapshot,
+                destination.ChannelNameSnapshot,
+                DiscordNonce.Create(request.SubmissionId, destination.ChannelId),
+                now));
         }
 
-        return new DiscordPublicationResult(request.SubmissionId, results);
+        dbContext.PublicationPayloads.Add(payloadProtector.Protect(publicationId, request, now));
+        await auditWriter.WriteAsync(
+            new AuditEvent(AuditEventCode.PublicationQueued, AuditOutcome.Succeeded, actorUserId),
+            cancellationToken);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return new DiscordPublicationEnqueueResult(publicationId, false);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            dbContext.ChangeTracker.Clear();
+            Guid? duplicate = await dbContext.Publications.AsNoTracking()
+                .Where(value => value.SubmissionId == request.SubmissionId
+                    && value.RequestedByUserId == actorUserId)
+                .Select(value => (Guid?)value.Id)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (duplicate is not null)
+            {
+                return new DiscordPublicationEnqueueResult(duplicate.Value, true);
+            }
+
+            throw;
+        }
     }
 
-    private static DiscordMentionBuildResult ValidateMentions(
+    public Task<Guid?> FindEnqueuedAsync(
+        Guid submissionId,
+        Guid actorUserId,
+        CancellationToken cancellationToken = default) =>
+        dbContext.Publications.AsNoTracking()
+            .Where(value => value.SubmissionId == submissionId
+                && value.RequestedByUserId == actorUserId)
+            .Select(value => (Guid?)value.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+
+    internal static void ValidateRequestShape(
         DiscordPublishRequest request,
-        bool canUseMassMentions,
-        IReadOnlyList<DiscordDestination> destinations,
-        Dictionary<string, DiscordChannelCapability> channels,
-        IReadOnlyList<DiscordRole> roles)
+        bool canUseMassMentions)
     {
-        bool mass = request.Mentions.Everyone || request.Mentions.Here;
-        if (mass && (!canUseMassMentions || !request.MassMentionConfirmed))
+        if (request.SubmissionId == Guid.Empty)
+        {
+            throw new DiscordPublicationValidationException(
+                "Reload the publication form before sending.");
+        }
+
+        Guid[] destinations = request.DestinationIds.Distinct().ToArray();
+        if (destinations.Length is < 1 or > 10 || destinations.Length != request.DestinationIds.Count)
+        {
+            throw new DiscordPublicationValidationException(
+                "Select between 1 and 10 distinct Discord channels.");
+        }
+
+        if ((request.Mentions.Everyone || request.Mentions.Here)
+            && (!canUseMassMentions || !request.MassMentionConfirmed))
         {
             throw new DiscordPublicationValidationException(
                 "Mass mentions require Owner or Admin authorization and explicit confirmation.");
         }
 
-        bool allCanMassMention = destinations.All(
-            value => channels[value.ChannelId].CanMentionEveryone);
-        if (mass && !allCanMassMention)
+        if (request.Mentions.RoleIds.Distinct(StringComparer.Ordinal).Count() > 25
+            || request.Mentions.UserIds.Distinct(StringComparer.Ordinal).Count() > 25)
         {
             throw new DiscordPublicationValidationException(
-                "The bot cannot use mass mentions in every selected channel.");
+                "Select no more than 25 Discord roles and 25 Discord users.");
+        }
+
+        foreach (string snowflake in request.Mentions.RoleIds.Concat(request.Mentions.UserIds))
+        {
+            DiscordSnowflake.Require(snowflake);
+        }
+    }
+
+    internal static DiscordMentionBuildResult ValidateLiveMentions(
+        DiscordPublishRequest request,
+        DiscordChannelCapability channel,
+        IReadOnlyList<DiscordRole> roles)
+    {
+        bool mass = request.Mentions.Everyone || request.Mentions.Here;
+        if (mass && (!request.MassMentionConfirmed || !channel.CanMentionEveryone))
+        {
+            throw new DiscordPublicationValidationException(
+                "The bot cannot use the reviewed mass mention in this channel.");
         }
 
         Dictionary<string, DiscordRole> byId = roles.ToDictionary(value => value.Id);
         foreach (string roleId in request.Mentions.RoleIds.Distinct(StringComparer.Ordinal))
         {
-            DiscordSnowflake.Require(roleId);
             if (roleId == request.GuildId
                 || !byId.TryGetValue(roleId, out DiscordRole? role)
-                || (!role.Mentionable && (!canUseMassMentions || !allCanMassMention)))
+                || (!role.Mentionable && !channel.CanMentionEveryone))
             {
                 throw new DiscordPublicationValidationException(
-                    "A selected Discord role cannot be mentioned safely.");
+                    "A reviewed Discord role can no longer be mentioned safely.");
             }
         }
 
@@ -519,9 +465,7 @@ internal sealed class DiscordPublishingService(
 
         Uri? titleUrl = DiscordMessageValidation.OptionalHttpsUri(embed.TitleUrl, "Embed title URL");
         Uri? imageUrl = DiscordMessageValidation.OptionalHttpsUri(embed.ImageUrl, "Embed image URL");
-        Uri? thumbnailUrl = DiscordMessageValidation.OptionalHttpsUri(
-            embed.ThumbnailUrl,
-            "Embed thumbnail URL");
+        Uri? thumbnailUrl = DiscordMessageValidation.OptionalHttpsUri(embed.ThumbnailUrl, "Embed thumbnail URL");
         if (request.UploadedImage?.EmbedPlacement == true)
         {
             imageUrl = new Uri($"attachment://{request.UploadedImage.OutboundFileName}");
@@ -536,9 +480,7 @@ internal sealed class DiscordPublishingService(
             NullIfEmpty(embed.Description),
             titleUrl?.AbsoluteUri,
             DiscordMessageValidation.OptionalColor(embed.Color),
-            string.IsNullOrWhiteSpace(embed.Footer)
-                ? null
-                : new DiscordEmbedFooter(embed.Footer),
+            string.IsNullOrWhiteSpace(embed.Footer) ? null : new DiscordEmbedFooter(embed.Footer),
             imageUrl is null ? null : new DiscordEmbedMedia(imageUrl.OriginalString),
             thumbnailUrl is null ? null : new DiscordEmbedMedia(thumbnailUrl.AbsoluteUri));
         if (payload.Title is null && payload.Description is null && payload.Image is null)
@@ -574,8 +516,7 @@ internal sealed class DiscordPublishingService(
     private Task<DiscordConnection?> GetConnectionAsync(
         Guid connectionId,
         CancellationToken cancellationToken) =>
-        dbContext.DiscordConnections
-            .AsNoTracking()
+        dbContext.DiscordConnections.AsNoTracking()
             .SingleOrDefaultAsync(value => value.Id == connectionId, cancellationToken);
 
     private Task<T> UseTokenAsync<T>(
@@ -587,42 +528,6 @@ internal sealed class DiscordPublishingService(
             DiscordConfigurationService.SecretPurpose(connection.Id),
             operation,
             cancellationToken);
-
-    private Task WriteAuditAsync(
-        AuditEventCode code,
-        Guid actorUserId,
-        CancellationToken cancellationToken,
-        AuditOutcome outcome = AuditOutcome.Succeeded) =>
-        auditWriter.WriteAsync(
-            new AuditEvent(code, outcome, actorUserId),
-            cancellationToken);
-
-    private async Task<DiscordPublicationResult> CompleteWithoutSendingAsync(
-        Guid submissionId,
-        IReadOnlyList<DiscordDestination> destinations,
-        DiscordDeliveryStatus status,
-        Guid actorUserId)
-    {
-        List<DiscordDeliveryResult> results = [];
-        foreach (DiscordDestination destination in destinations)
-        {
-            results.Add(new DiscordDeliveryResult(
-                destination.Id,
-                destination.GuildNameSnapshot,
-                destination.ChannelNameSnapshot,
-                status,
-                null,
-                CorrectiveAction(status)));
-            await WriteAuditAsync(
-                AuditEventCode.DiscordPublicationChannelFailed,
-                actorUserId,
-                CancellationToken.None,
-                AuditOutcome.Failed);
-        }
-
-        await dbContext.SaveChangesAsync(CancellationToken.None);
-        return new DiscordPublicationResult(submissionId, results);
-    }
 
     private static string? NullIfEmpty(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value;

@@ -29,6 +29,11 @@ inbound Discord endpoint. Publications execute synchronously through the Create
 Message HTTP endpoint. No durable delivery record, queue, worker, schedule, or
 background retry is introduced.
 
+Checkpoint 14 supersedes only the foreground-delivery lifetime described here;
+see [ADR 0007](0007-durable-publication-processing.md). The bot HTTP transport,
+fixed host, credential, discovery, permission, and no-Gateway decisions remain
+unchanged.
+
 ## Consequences
 
 Benefits:
@@ -45,7 +50,8 @@ Costs and constraints:
 - an administrator must create and install a Discord application and bot;
 - member search can depend on Discord application configuration, so a validated
   manual user-ID fallback remains available;
-- foreground delivery has a bounded request lifetime and no durable recovery;
+- checkpoint 13 foreground delivery had a bounded request lifetime and no
+  durable recovery; ADR 0007 replaces that limitation;
 - the operator must deliberately grant Mention Everyone before authorized mass
   mentions can work.
 

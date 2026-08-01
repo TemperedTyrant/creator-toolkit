@@ -174,14 +174,21 @@ enforcement. The Users read model exposes only username, role, account state,
 and authorized workflow links. Settings exposes configuration presence and
 trusted-entry counts, never values. Debug uses a fixed allowlist containing safe
 booleans, version, diagnostic references, fixed diagnostic codes, and UTC
-timestamps. Product-area pages are explicit non-functional empty states and
-contain no provider or publishing operations.
+timestamps. Implemented product pages enforce their own role policies and
+mutation authorization in addition to the application-access policy.
 
 ## Secret storage
 
 Connector credentials are encrypted with ASP.NET Core Data Protection before
 database persistence. Data Protection keys persist in the named volume with
 restrictive file permissions. Secrets are separated from display configuration.
+
+Pending Discord publication snapshots and uploaded image bytes are also
+encrypted with a publication-specific Data Protection purpose before entering
+SQLite. Only the hosted publication worker decrypts them. They are removed once
+all destination deliveries become terminal; safe history never exposes their
+content. Database and key-ring backups must remain coordinated so pending work
+can recover after restart.
 
 A secret may be:
 

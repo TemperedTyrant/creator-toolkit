@@ -17,6 +17,10 @@ public sealed class DatabaseMigrationTests
         "DiscordDestinations",
         "InstallationStates",
         "Ownerships",
+        "PublicationAttempts",
+        "PublicationDeliveries",
+        "PublicationPayloads",
+        "Publications",
         "ProtectedSecrets",
         "SecurityCapabilities",
         "Workspaces",
@@ -34,7 +38,7 @@ public sealed class DatabaseMigrationTests
     ];
 
     [Fact]
-    public async Task CurrentMigrationsCreateFoundationAndAnnouncementSchemaOnly()
+    public async Task CurrentMigrationsCreateFoundationAnnouncementDiscordAndPublicationSchema()
     {
         using TestDataDirectory data = new();
         await using ServiceProvider provider = TestServices.Create(data.Path);
@@ -166,6 +170,41 @@ public sealed class DatabaseMigrationTests
             Assert.Equal(1, await current.Announcements.CountAsync());
             Assert.Empty(await current.DiscordConnections.ToListAsync());
             Assert.Empty(await current.DiscordDestinations.ToListAsync());
+            Assert.False(current.Database.HasPendingModelChanges());
+        }
+    }
+
+    [Fact]
+    public async Task AddDurablePublicationsMigratesDiscordSchemaWithoutChangingExistingData()
+    {
+        using TestDataDirectory data = new();
+        await using ServiceProvider provider = TestServices.Create(data.Path);
+        IDbContextFactory<CreatorToolkitDbContext> contextFactory =
+            provider.GetRequiredService<IDbContextFactory<CreatorToolkitDbContext>>();
+
+        await using (CreatorToolkitDbContext previous = await contextFactory.CreateDbContextAsync())
+        {
+            await previous.Database.MigrateAsync("20260801041630_AddDiscordDestinations");
+            await previous.Database.ExecuteSqlRawAsync(
+                """
+                INSERT INTO Announcements
+                    (Id, Title, Body, Status, CreatedAtUtc, UpdatedAtUtc,
+                     CreatedByUserId, UpdatedByUserId, Revision)
+                VALUES
+                    ('3171a115-93cd-4dfd-b8a1-1c80426a8df6', 'Existing', 'Existing body', 'Draft',
+                     1785542400000, 1785542400000,
+                     'c31a6b8d-e6f8-4e3d-994c-5d876789d080',
+                     'c31a6b8d-e6f8-4e3d-994c-5d876789d080', 1);
+                """);
+        }
+
+        await using (CreatorToolkitDbContext current = await contextFactory.CreateDbContextAsync())
+        {
+            await current.Database.MigrateAsync();
+            Assert.Equal(1, await current.Announcements.CountAsync());
+            Assert.Empty(await current.Publications.ToListAsync());
+            Assert.Empty(await current.PublicationDeliveries.ToListAsync());
+            Assert.Empty(await current.PublicationAttempts.ToListAsync());
             Assert.False(current.Database.HasPendingModelChanges());
         }
     }

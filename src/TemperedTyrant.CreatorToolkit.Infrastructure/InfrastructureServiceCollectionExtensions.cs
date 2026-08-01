@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using TemperedTyrant.CreatorToolkit.Core.Announcements;
 using TemperedTyrant.CreatorToolkit.Core.Audit;
 using TemperedTyrant.CreatorToolkit.Core.Diagnostics;
+using TemperedTyrant.CreatorToolkit.Core.Publications;
 using TemperedTyrant.CreatorToolkit.Core.Security;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Announcements;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Audit;
@@ -17,6 +18,7 @@ using TemperedTyrant.CreatorToolkit.Infrastructure.Health;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
 using TemperedTyrant.CreatorToolkit.Infrastructure.ProcessCoordination;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Publications;
 using TemperedTyrant.CreatorToolkit.Infrastructure.ReadModels;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Security;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Setup;
@@ -133,9 +135,12 @@ public static class InfrastructureServiceCollectionExtensions
                 });
         services.AddScoped<IDiscordApi>(
             provider => provider.GetRequiredService<DiscordHttpApi>());
-        services.AddSingleton(DiscordPublishingOptions.Default);
         services.AddScoped<IDiscordConfigurationService, DiscordConfigurationService>();
         services.AddScoped<IDiscordPublishingService, DiscordPublishingService>();
+        services.AddScoped<IPublicationHistoryService, PublicationHistoryService>();
+        services.AddScoped<PublicationProcessor>();
+        services.AddSingleton<PublicationPayloadProtector>();
+        services.AddSingleton(PublicationWorkerOptions.Default);
         services.AddSingleton<
             IDiagnosticReferenceGenerator,
             CryptographicDiagnosticReferenceGenerator>();

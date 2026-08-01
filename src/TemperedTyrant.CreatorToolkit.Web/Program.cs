@@ -7,6 +7,7 @@ using TemperedTyrant.CreatorToolkit.Infrastructure;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
 using TemperedTyrant.CreatorToolkit.Infrastructure.ProcessCoordination;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Publications;
 using TemperedTyrant.CreatorToolkit.Web.Authorization;
 using TemperedTyrant.CreatorToolkit.Web.Commands;
 using TemperedTyrant.CreatorToolkit.Web.Configuration;
@@ -67,7 +68,6 @@ builder.Services.ConfigureApplicationCookie(
     });
 builder.Services.AddScoped<CreatorToolkitCookieEvents>();
 builder.Services.AddScoped<DebugStatusService>();
-builder.Services.AddSingleton<DiscordPublicationResultStore>();
 builder.Services.AddSingleton<DiscordEphemeralUploadStore>();
 builder.Services.AddSingleton<ApplicationHostLockLifetime>();
 builder.Services.AddSingleton<IHostedService>(
@@ -77,6 +77,7 @@ builder.Services.AddSingleton(ApplicationLifecycleOptions.Default);
 builder.Services.AddSingleton(HealthReadinessOptions.Default);
 builder.Services.AddSingleton<ApplicationReadinessService>();
 builder.Services.AddHostedService<ApplicationLifecycleHostedService>();
+builder.Services.AddHostedService<PublicationWorker>();
 builder.Services.Configure<HostOptions>(
     options => options.ShutdownTimeout = TimeSpan.FromSeconds(15));
 builder.Services.Configure<SecurityStampValidatorOptions>(

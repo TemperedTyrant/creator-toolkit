@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
 
@@ -10,9 +11,11 @@ using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
 namespace TemperedTyrant.CreatorToolkit.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(CreatorToolkitDbContext))]
-    partial class CreatorToolkitDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260801075002_AddDurablePublications")]
+    partial class AddDurablePublications
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");

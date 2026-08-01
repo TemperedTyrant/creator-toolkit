@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using TemperedTyrant.CreatorToolkit.Core.Announcements;
 using TemperedTyrant.CreatorToolkit.Core.Audit;
+using TemperedTyrant.CreatorToolkit.Core.Publications;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
 
 namespace TemperedTyrant.CreatorToolkit.Infrastructure.Announcements;
@@ -240,6 +241,19 @@ internal sealed class AnnouncementService(
         if (announcement.Revision != expectedRevision)
         {
             return AnnouncementOperationResult.StaleRevision(announcementId);
+        }
+
+        bool hasActivePublication = await dbContext.Publications.AsNoTracking()
+            .AnyAsync(
+                value => value.AnnouncementId == announcementId
+                    && value.Status != PublicationStatus.Succeeded
+                    && value.Status != PublicationStatus.PartiallySucceeded
+                    && value.Status != PublicationStatus.Failed
+                    && value.Status != PublicationStatus.Cancelled,
+                cancellationToken);
+        if (hasActivePublication)
+        {
+            return AnnouncementOperationResult.InvalidTransition(announcementId);
         }
 
         long resultingRevision = checked(announcement.Revision + 1);

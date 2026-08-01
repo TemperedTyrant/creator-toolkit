@@ -1,13 +1,56 @@
-@page "/Publish-History"
+@page "/PublishHistory"
 @model PublishHistoryModel
+@using TemperedTyrant.CreatorToolkit.Core.Publications
 @{
     ViewData["Title"] = "Publish History";
 }
 <header class="page-heading">
     <h1>Publish History</h1>
-    <p class="lede">Completed and attempted publication activity will eventually appear here.</p>
+    <p class="lede">Durable Discord publication status and destination results.</p>
 </header>
-<section class="notice">
-    <h2>Not implemented</h2>
-    <p>Publishing, delivery attempts, retries, and history persistence are not available in this pre-alpha version. No activity is simulated.</p>
+<section class="card">
+    <form method="get">
+        <label asp-for="Status">Status</label>
+        <select asp-for="Status">
+            <option value="">All statuses</option>
+            @foreach (PublicationStatus status in Enum.GetValues<PublicationStatus>())
+            {
+                <option value="@status">@status</option>
+            }
+        </select>
+        <label asp-for="Provider">Provider</label>
+        <select asp-for="Provider"><option value="">All providers</option><option value="Discord">Discord</option></select>
+        <label asp-for="RequestedFromUtc">Requested from (UTC)</label><input asp-for="RequestedFromUtc" type="datetime-local">
+        <label asp-for="RequestedToUtc">Requested to (UTC)</label><input asp-for="RequestedToUtc" type="datetime-local">
+        <button type="submit">Apply filters</button>
+    </form>
 </section>
+@if (Model.Results.Items.Count == 0)
+{
+    <section class="notice"><h2>No publications</h2><p>No durable publications match these filters.</p></section>
+}
+else
+{
+    <section class="card">
+        <h2>Publications</h2>
+        @foreach (PublicationHistoryItem item in Model.Results.Items)
+        {
+            <article class="list-item">
+                <h3><a asp-page="/PublishHistory/Details" asp-route-id="@item.Id">@item.Provider publication</a></h3>
+                <p><strong>@item.Status</strong> · requested <time datetime="@item.RequestedAtUtc.ToString("O")">@item.RequestedAtUtc.ToString("u")</time></p>
+                <p class="muted">@item.SuccessfulDeliveryCount succeeded · @item.FailedDeliveryCount failed · @item.CancelledDeliveryCount cancelled · @item.TotalDeliveryCount total</p>
+            </article>
+        }
+        <nav aria-label="Publication history pages">
+            @if (Model.Results.Page > 1)
+            {
+                <a asp-route-pageNumber="@(Model.Results.Page - 1)" asp-route-status="@Model.Status" asp-route-provider="@Model.Provider">Previous</a>
+            }
+            <span>Page @Model.Results.Page of @Model.Results.TotalPages</span>
+            @if (Model.Results.Page < Model.Results.TotalPages)
+            {
+                <a asp-route-pageNumber="@(Model.Results.Page + 1)" asp-route-status="@Model.Status" asp-route-provider="@Model.Provider">Next</a>
+            }
+        </nav>
+    </section>
+}

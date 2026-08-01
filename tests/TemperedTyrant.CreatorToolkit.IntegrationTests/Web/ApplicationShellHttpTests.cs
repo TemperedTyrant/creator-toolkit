@@ -24,7 +24,7 @@ public sealed partial class ApplicationShellHttpTests
         "/Announcements",
         "/Destinations",
         "/Event-Sources",
-        "/Publish-History",
+        "/PublishHistory",
     ];
 
     private static readonly string[] AdministrationRoutes =
@@ -326,7 +326,7 @@ public sealed partial class ApplicationShellHttpTests
         Assert.Contains("Add Discord bot", destinationsHtml, StringComparison.Ordinal);
         Assert.DoesNotContain("Not implemented", destinationsHtml, StringComparison.Ordinal);
 
-        foreach (string route in ProductRoutes.Skip(3))
+        foreach (string route in ProductRoutes.Skip(3).Take(1))
         {
             HttpResponseMessage response = await client.GetAsync(route);
             string html = await response.Content.ReadAsStringAsync();
@@ -347,6 +347,13 @@ public sealed partial class ApplicationShellHttpTests
                 + "frame-ancestors 'none'; form-action 'self'",
                 Assert.Single(response.Headers.GetValues("Content-Security-Policy")));
         }
+
+
+        HttpResponseMessage history = await client.GetAsync("/PublishHistory");
+        string historyHtml = await history.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, history.StatusCode);
+        Assert.Contains("Durable Discord publication status", historyHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Not implemented", historyHtml, StringComparison.Ordinal);
 
         string debug = await client.GetStringAsync("/Debug");
         Assert.Contains("<dd>Running</dd>", debug, StringComparison.Ordinal);
