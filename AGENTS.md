@@ -171,3 +171,59 @@ Before declaring work complete:
    credentials, and accidental secrets.
 8. Confirm documentation, tests, and ADRs reflect the final behavior.
 9. Report commands run, results, and any checks that could not be performed.
+
+## GitHub pull-request workflow
+
+When explicitly instructed to complete a checkpoint through GitHub, the agent
+is authorized to:
+
+- commit the reviewed checkpoint changes
+- push the current feature branch
+- create a draft pull request targeting `main`
+- update the existing pull request for the current branch
+- monitor pull-request checks
+- inspect failed GitHub Actions logs
+- make narrowly scoped corrections for failures caused by the checkpoint
+- commit and push those corrections
+- repeat validation until all required checks pass or a genuine blocker is
+  identified
+
+The agent must:
+
+- use the authenticated GitHub CLI rather than asking the user to copy routine
+  check output
+- detect an existing pull request before creating another one
+- create pull requests as drafts
+- use the repository pull-request template
+- preserve immutable GitHub Action pins
+- report the PR URL, check results, corrections, and remaining risks
+- stop for user review after all checks pass
+
+The agent must never:
+
+- merge a pull request
+- enable auto-merge
+- mark a draft pull request ready for review
+- close a pull request
+- force-push or rewrite published history
+- delete local or remote branches
+- modify GitHub repository settings, rulesets, permissions, secrets, variables,
+  environments, security settings, or webhooks
+- retrieve or print GitHub authentication tokens
+- run `gh auth token`
+- inspect GitHub CLI credential-storage files
+- expose workflow secrets, credentials, cookies, capabilities, database files,
+  Data Protection keys, or `.env` contents
+- weaken or bypass a required validation check
+
+Going forward, PRs should contain only a brief summary of what changed.
+Testing, security review, verification, and deferred work stay in the Codex
+session—not the PR.
+
+## Pull request descriptions
+
+Keep pull request descriptions very brief.
+
+Only describe what the pull request changes. Do not include test results,
+verification commands, security-review details, implementation history,
+deferred work, or risk sections unless explicitly requested by the user.
