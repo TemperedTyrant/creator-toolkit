@@ -9,11 +9,13 @@ using TemperedTyrant.CreatorToolkit.Core.Audit;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
 using TemperedTyrant.CreatorToolkit.Web.RateLimiting;
+using TemperedTyrant.CreatorToolkit.Web.Security;
 
 namespace TemperedTyrant.CreatorToolkit.Web.Pages;
 
 [AllowAnonymous]
 [EnableRateLimiting(RateLimitPolicies.Login)]
+[SensitiveSecurityHeaderProfile]
 public sealed class LoginModel(
     UserManager<ApplicationUser> userManager,
     SignInManager<ApplicationUser> signInManager,

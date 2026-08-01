@@ -34,6 +34,12 @@ public sealed partial class ApplicationShellHttpTests
         "/Debug",
     ];
 
+    private static readonly string[] PersonalSecurityRoutes =
+    [
+        "/ChangePassword",
+        "/Logout",
+    ];
+
     [Fact]
     public async Task RoutesEnforceCompleteRoleAndDisabledAccountMatrix()
     {
@@ -73,7 +79,9 @@ public sealed partial class ApplicationShellHttpTests
         await LoginAsync(disabledClient, disabled.UserName, Password);
         await DisableAsync(factory.Services, ownerId, disabled.Id);
 
-        foreach (string route in ProductRoutes.Concat(AdministrationRoutes))
+        foreach (string route in ProductRoutes
+            .Concat(PersonalSecurityRoutes)
+            .Concat(AdministrationRoutes))
         {
             HttpResponseMessage anonymous = await anonymousClient.GetAsync(route);
             Assert.Equal(HttpStatusCode.Found, anonymous.StatusCode);
@@ -84,7 +92,7 @@ public sealed partial class ApplicationShellHttpTests
                 StringComparison.Ordinal);
         }
 
-        foreach (string route in ProductRoutes)
+        foreach (string route in ProductRoutes.Concat(PersonalSecurityRoutes))
         {
             Assert.Equal(HttpStatusCode.OK, (await ownerClient.GetAsync(route)).StatusCode);
             Assert.Equal(HttpStatusCode.OK, (await adminClient.GetAsync(route)).StatusCode);
@@ -100,7 +108,9 @@ public sealed partial class ApplicationShellHttpTests
             AssertAccessDenied(await viewerClient.GetAsync(route));
         }
 
-        foreach (string route in ProductRoutes.Concat(AdministrationRoutes))
+        foreach (string route in ProductRoutes
+            .Concat(PersonalSecurityRoutes)
+            .Concat(AdministrationRoutes))
         {
             HttpResponseMessage disabledResponse = await disabledClient.GetAsync(route);
             Assert.Equal(HttpStatusCode.Found, disabledResponse.StatusCode);
@@ -177,10 +187,24 @@ public sealed partial class ApplicationShellHttpTests
         await LoginAsync(ownerClient, "owner-local", Password);
         await LoginAsync(editorClient, editor.UserName, Password);
 
-        HttpResponseMessage missingAntiforgery = await ownerClient.PostAsync(
+        string[] protectedMutationPaths =
+        [
             "/Account/CreateUser",
-            Form(("UserName", "forged-user"), ("Role", SystemRoles.Viewer)));
-        Assert.Equal(HttpStatusCode.BadRequest, missingAntiforgery.StatusCode);
+            "/Account/ManageUser?handler=Role",
+            "/Account/ManageUser?handler=Disable",
+            "/Account/ManageUser?handler=Delete",
+            "/Account/ManageUser?handler=RegenerateActivation",
+            "/Account/TransferOwnership",
+            "/ChangePassword",
+            "/Logout",
+        ];
+        foreach (string path in protectedMutationPaths)
+        {
+            HttpResponseMessage missingAntiforgery = await ownerClient.PostAsync(
+                path,
+                Form(("UserName", "forged-user"), ("Role", SystemRoles.Viewer)));
+            Assert.Equal(HttpStatusCode.BadRequest, missingAntiforgery.StatusCode);
+        }
 
         string editorDashboard = await editorClient.GetStringAsync("/Dashboard");
         HttpResponseMessage unauthorizedMutation = await editorClient.PostAsync(
@@ -190,10 +214,6 @@ public sealed partial class ApplicationShellHttpTests
                 ("UserName", "forged-user"),
                 ("Role", SystemRoles.Viewer)));
         AssertAccessDenied(unauthorizedMutation);
-
-        Assert.Equal(
-            HttpStatusCode.BadRequest,
-            (await ownerClient.PostAsync("/Logout", Form())).StatusCode);
 
         await using AsyncServiceScope scope = factory.Services.CreateAsyncScope();
         Assert.False(

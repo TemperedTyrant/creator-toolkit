@@ -8,7 +8,8 @@ public partial class ApplicationLifecycleHostedService(
     ApplicationLifecycleOptions options,
     TimeProvider timeProvider,
     IHostApplicationLifetime applicationLifetime,
-    ILogger<ApplicationLifecycleHostedService> logger) : IHostedService, IDisposable
+    ILogger<ApplicationLifecycleHostedService> logger,
+    ApplicationHostLockLifetime? applicationHostLockLifetime = null) : IHostedService, IDisposable
 {
     private CancellationTokenRegistration _stoppingRegistration;
 
@@ -71,6 +72,11 @@ public partial class ApplicationLifecycleHostedService(
             Task shutdownTask = CompleteShutdownAsync(linkedSource.Token);
             ObserveLateFailure(shutdownTask);
             await shutdownTask.WaitAsync(linkedSource.Token);
+            if (applicationHostLockLifetime is not null)
+            {
+                await applicationHostLockLifetime.ReleaseAsync();
+            }
+
             if (coordinator.TryMarkStopped(generation))
             {
                 LogStopped(logger);

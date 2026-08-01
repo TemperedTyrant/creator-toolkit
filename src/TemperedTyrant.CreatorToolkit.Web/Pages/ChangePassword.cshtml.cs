@@ -8,10 +8,12 @@ using TemperedTyrant.CreatorToolkit.Core.Audit;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
 using TemperedTyrant.CreatorToolkit.Web.Authorization;
+using TemperedTyrant.CreatorToolkit.Web.Security;
 
 namespace TemperedTyrant.CreatorToolkit.Web.Pages;
 
 [Authorize(Policy = AuthorizationPolicies.ApplicationAccess)]
+[SensitiveSecurityHeaderProfile]
 public sealed class ChangePasswordModel(
     UserManager<ApplicationUser> userManager,
     SignInManager<ApplicationUser> signInManager,

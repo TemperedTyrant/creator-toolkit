@@ -219,6 +219,31 @@ public sealed class ApplicationLifecycleTests
     }
 
     [Fact]
+    public async Task StoppedStateIsPublishedOnlyAfterApplicationHostLockRelease()
+    {
+        using TestDataDirectory data = new();
+        await using ServiceProvider provider = TestServices.Create(data.Path);
+        await TestServices.InitializeAsync(provider);
+        ApplicationHostLock applicationHostLock = provider
+            .GetRequiredService<ApplicationHostLock>();
+        await using ApplicationHostLockLifetime lockLifetime = new(applicationHostLock);
+        await lockLifetime.AcquireAsync();
+        Assert.True(applicationHostLock.IsHeld());
+        ApplicationLifecycleCoordinator coordinator = new();
+        ControllableLifecycleService service = CreateService(
+            coordinator,
+            new RecordingLogger(),
+            hostLockLifetime: lockLifetime);
+
+        await service.StartAsync(CancellationToken.None);
+        await service.StopAsync(CancellationToken.None);
+
+        Assert.Equal(ApplicationLifecycleState.Stopped, coordinator.GetStatus().State);
+        Assert.False(applicationHostLock.IsHeld());
+        await using ApplicationHostLease replacement = await applicationHostLock.AcquireAsync();
+    }
+
+    [Fact]
     public async Task ActualHostShutdownBoundsWorkAndReleasesApplicationLock()
     {
         using TestDataDirectory normalData = new();
@@ -362,13 +387,15 @@ public sealed class ApplicationLifecycleTests
         ApplicationLifecycleCoordinator coordinator,
         RecordingLogger logger,
         TimeSpan? timeout = null,
-        TestHostApplicationLifetime? lifetime = null) =>
+        TestHostApplicationLifetime? lifetime = null,
+        ApplicationHostLockLifetime? hostLockLifetime = null) =>
         new(
             coordinator,
             new ApplicationLifecycleOptions(timeout ?? TimeSpan.FromSeconds(1)),
             TimeProvider.System,
             lifetime ?? new TestHostApplicationLifetime(),
-            logger);
+            logger,
+            hostLockLifetime);
 
     private static async Task AssertHostLockUnavailableAsync(string dataDirectory)
     {
@@ -398,13 +425,15 @@ public sealed class ApplicationLifecycleTests
         ApplicationLifecycleOptions options,
         TimeProvider timeProvider,
         IHostApplicationLifetime applicationLifetime,
-        ILogger<ApplicationLifecycleHostedService> logger)
+        ILogger<ApplicationLifecycleHostedService> logger,
+        ApplicationHostLockLifetime? hostLockLifetime = null)
         : ApplicationLifecycleHostedService(
             coordinator,
             options,
             timeProvider,
             applicationLifetime,
-            logger)
+            logger,
+            hostLockLifetime)
     {
         internal bool BlockStartup { get; set; }
 

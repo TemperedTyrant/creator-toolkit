@@ -24,6 +24,33 @@ public sealed partial class AuthenticationAndSetupHttpTests
 {
     private const string ValidPassword = "mild river orbit velvet canyon";
 
+    [Theory]
+    [InlineData("/Login")]
+    [InlineData("/Setup")]
+    [InlineData("/Account/Activate")]
+    [InlineData("/Account/RecoverOwner")]
+    public async Task AnonymousSecurityMutationsRequireAntiforgery(string path)
+    {
+        await using CreatorToolkitWebFactory factory = new();
+        using HttpClient client = factory.CreateClient(
+            new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false,
+            });
+
+        HttpResponseMessage response = await client.PostAsync(
+            path,
+            new FormUrlEncodedContent(
+                new Dictionary<string, string>
+                {
+                    ["Capability"] = "synthetic-invalid-capability",
+                    ["UserName"] = "synthetic-user",
+                    ["Password"] = "synthetic-password",
+                }));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task SetupFragmentIsNotSentOrRenderedAndFailureDoesNotEchoCapability()
     {
@@ -161,6 +188,53 @@ public sealed partial class AuthenticationAndSetupHttpTests
         CreatorToolkitDbContext db = scope.ServiceProvider
             .GetRequiredService<CreatorToolkitDbContext>();
         Assert.Equal(0, await db.DiagnosticRecords.CountAsync());
+    }
+
+    [Fact]
+    public async Task LoginRateLimitCannotBeBypassedByRouteCaseOrUsernameVariation()
+    {
+        await using CreatorToolkitWebFactory factory = new();
+        using HttpClient client = factory.CreateClient(
+            new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false,
+            });
+        await SetupOwnerThroughHttpAsync(factory, client);
+        string loginHtml = await client.GetStringAsync("/Login");
+        string antiforgery = GetAntiforgeryToken(loginHtml);
+        (string Path, string UserName)[] attempts =
+        [
+            ("/Login?variant=one", "owner-local"),
+            ("/login?variant=two", "OWNER-LOCAL"),
+            ("/LOGIN?variant=three", "unknown-one"),
+            ("/Login?variant=four", "unknown-two"),
+            ("/login?variant=five", "owner-local "),
+        ];
+
+        foreach ((string path, string userName) in attempts)
+        {
+            HttpResponseMessage response = await client.PostAsync(
+                path,
+                new FormUrlEncodedContent(
+                    new Dictionary<string, string>
+                    {
+                        ["__RequestVerificationToken"] = antiforgery,
+                        ["UserName"] = userName,
+                        ["Password"] = "incorrect-password",
+                    }));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        HttpResponseMessage limited = await client.PostAsync(
+            "/Login?variant=six",
+            new FormUrlEncodedContent(
+                new Dictionary<string, string>
+                {
+                    ["__RequestVerificationToken"] = antiforgery,
+                    ["UserName"] = "different-user",
+                    ["Password"] = "incorrect-password",
+                }));
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
     }
 
     [Fact]
@@ -437,6 +511,46 @@ public sealed partial class AuthenticationAndSetupHttpTests
             1,
             await db.AuditRecords.CountAsync(
                 record => record.EventCode == "identity.logout-succeeded"));
+    }
+
+    [Fact]
+    public async Task PasswordChangeInvalidatesOtherSessionsAndRefreshesOnlyTheCaller()
+    {
+        await using CreatorToolkitWebFactory factory = new();
+        using HttpClient changingClient = factory.CreateClient(
+            new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false,
+            });
+        using HttpClient staleClient = factory.CreateClient(
+            new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false,
+            });
+        await SetupOwnerThroughHttpAsync(factory, changingClient);
+        await LoginThroughHttpAsync(changingClient);
+        await LoginThroughHttpAsync(staleClient);
+        const string newPassword = "silver meadow lantern compass";
+
+        string changeHtml = await changingClient.GetStringAsync("/ChangePassword");
+        HttpResponseMessage changed = await changingClient.PostAsync(
+            "/ChangePassword",
+            new FormUrlEncodedContent(
+                new Dictionary<string, string>
+                {
+                    ["__RequestVerificationToken"] = GetAntiforgeryToken(changeHtml),
+                    ["CurrentPassword"] = ValidPassword,
+                    ["NewPassword"] = newPassword,
+                    ["ConfirmPassword"] = newPassword,
+                }));
+        Assert.Equal(HttpStatusCode.Found, changed.StatusCode);
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await changingClient.GetAsync("/Dashboard")).StatusCode);
+        HttpResponseMessage staleSession = await staleClient.GetAsync("/Dashboard");
+        Assert.Equal(HttpStatusCode.Found, staleSession.StatusCode);
+        Assert.Equal("/Login", staleSession.Headers.Location?.AbsolutePath);
     }
 
     [Fact]

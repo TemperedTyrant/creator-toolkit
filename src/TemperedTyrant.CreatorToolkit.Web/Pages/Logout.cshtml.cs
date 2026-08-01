@@ -7,10 +7,12 @@ using Microsoft.EntityFrameworkCore;
 using TemperedTyrant.CreatorToolkit.Core.Audit;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
+using TemperedTyrant.CreatorToolkit.Web.Security;
 
 namespace TemperedTyrant.CreatorToolkit.Web.Pages;
 
 [Authorize]
+[SensitiveSecurityHeaderProfile]
 public sealed class LogoutModel(
     SignInManager<ApplicationUser> signInManager,
     CreatorToolkitDbContext dbContext,

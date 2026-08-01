@@ -87,7 +87,7 @@ public sealed class ApplicationHostLockLifetime(
         return ReleaseAsync();
     }
 
-    private async ValueTask ReleaseAsync()
+    internal async ValueTask ReleaseAsync()
     {
         ApplicationHostLease? lease;
         lock (_sync)
