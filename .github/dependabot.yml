@@ -1,0 +1,53 @@
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    groups:
+      microsoft-aspnet-ef:
+        patterns:
+          - "Microsoft.AspNetCore.Identity.EntityFrameworkCore"
+          - "Microsoft.AspNetCore.Mvc.Testing"
+          - "Microsoft.EntityFrameworkCore.*"
+      xunit-tests:
+        patterns:
+          - "xunit*"
+
+  - package-ecosystem: docker
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:15"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 3
+    groups:
+      dotnet-base-images:
+        patterns:
+          - "mcr.microsoft.com/dotnet/aspnet"
+          - "mcr.microsoft.com/dotnet/sdk"
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:30"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 3
+    groups:
+      github-official-actions:
+        patterns:
+          - "actions/*"
+      docker-official-actions:
+        patterns:
+          - "docker/*"

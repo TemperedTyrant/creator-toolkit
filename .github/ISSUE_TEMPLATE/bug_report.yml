@@ -1,0 +1,95 @@
+name: Bug report
+description: Report a reproducible defect without disclosing secrets or private data.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a defect. Search existing issues before submitting.
+
+        **Do not paste passwords; bootstrap, activation, or recovery capabilities; cookies or authorization headers; webhook URLs; connection strings; `.env` contents; SQLite database, WAL, or SHM files; Data Protection keys; private IP addressing unless genuinely necessary and sanitized; or personal information.**
+
+        If this may be an undisclosed vulnerability, stop here. Follow [SECURITY.md](https://github.com/TemperedTyrant/creator-toolkit/security/policy) and use [GitHub private vulnerability reporting](https://github.com/TemperedTyrant/creator-toolkit/security/advisories/new), not a public issue.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Provide a release version or commit SHA, not a local path or branch containing private information.
+      placeholder: commit SHA or version
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment method
+      options:
+        - Docker Compose
+        - Direct .NET execution
+        - Other self-hosted deployment
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and architecture
+      placeholder: Linux amd64, Linux arm64, Windows amd64, or similar
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Use the smallest safe sequence that reproduces the problem.
+      placeholder: |
+        1. Start from...
+        2. Perform...
+        3. Observe...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected safe behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual safe behavior
+      description: Describe the result without copying secrets, private data, or unsafe payloads.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs
+      description: Optional. Include only the smallest relevant excerpt after removing all sensitive values listed above.
+      render: text
+
+  - type: dropdown
+    id: security
+    attributes:
+      label: Does this potentially affect security?
+      description: If yes or unsure, do not disclose details here; use private vulnerability reporting.
+      options:
+        - "No"
+        - "Unsure — I reviewed the private reporting instructions"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: safe-report
+    attributes:
+      label: Safe-report confirmation
+      options:
+        - label: I removed secrets, private data, databases, key material, and unnecessary private addressing from this report.
+          required: true

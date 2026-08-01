@@ -75,17 +75,18 @@ public static class CreatorToolkitOptionsValidator
         IConfiguration configuration)
     {
         List<IPAddress> proxies = [];
-        foreach (IConfigurationSection child in configuration
-            .GetSection("TrustedProxies")
-            .GetChildren())
+        foreach (string value in GetConfiguredValues(configuration, "TrustedProxies"))
         {
-            if (!IPAddress.TryParse(child.Value, out IPAddress? address))
+            if (!IPAddress.TryParse(value, out IPAddress? address))
             {
                 throw new InvalidOperationException(
                     "Each TrustedProxies entry must be an IP address.");
             }
 
-            proxies.Add(address);
+            if (!proxies.Contains(address))
+            {
+                proxies.Add(address);
+            }
         }
 
         return proxies;
@@ -95,19 +96,38 @@ public static class CreatorToolkitOptionsValidator
         IConfiguration configuration)
     {
         List<IPNetwork> networks = [];
-        foreach (IConfigurationSection child in configuration
-            .GetSection("TrustedNetworks")
-            .GetChildren())
+        foreach (string value in GetConfiguredValues(configuration, "TrustedNetworks"))
         {
-            if (!IPNetwork.TryParse(child.Value, out IPNetwork network))
+            if (!IPNetwork.TryParse(value, out IPNetwork network))
             {
                 throw new InvalidOperationException(
                     "Each TrustedNetworks entry must use CIDR notation.");
             }
 
-            networks.Add(network);
+            if (!networks.Contains(network))
+            {
+                networks.Add(network);
+            }
         }
 
         return networks;
+    }
+
+    private static IEnumerable<string> GetConfiguredValues(
+        IConfiguration configuration,
+        string key)
+    {
+        IConfigurationSection section = configuration.GetSection(key);
+        IConfigurationSection[] children = [.. section.GetChildren()];
+        if (children.Length > 0)
+        {
+            return children
+                .Select(child => child.Value?.Trim() ?? string.Empty)
+                .Where(value => value.Length > 0);
+        }
+
+        return (section.Value ?? string.Empty).Split(
+            ',',
+            StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
     }
 }

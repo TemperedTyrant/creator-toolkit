@@ -53,4 +53,35 @@ although documentation defects that cause an unsafe default are welcome.
 
 The detailed design and threat model are in [docs/SECURITY.md](docs/SECURITY.md).
 
+## GitHub repository security controls
+
+Checkpoint-10 read-only inspection confirmed that private vulnerability
+reporting and the dependency graph are enabled. The repository also has an
+active `Protect main` ruleset requiring pull requests, preventing deletion and
+non-fast-forward updates, and requiring review-thread resolution; it currently
+requires zero approving reviews because the project has one maintainer.
+
+The available GitHub credential could not read Dependabot alert/security-update
+status, secret scanning, push protection, CodeQL default setup, or the default
+Actions token policy. No advanced CodeQL workflow is committed because doing so
+without knowing the default-setup state could duplicate code scanning.
+
+After checkpoint 10 reaches GitHub, a maintainer should open **Settings →
+Security → Advanced Security** and:
+
+1. confirm **Dependency graph** remains enabled;
+2. enable **Dependabot alerts** and **Dependabot security updates** if either is
+   disabled;
+3. enable **Secret scanning** and **Push protection** if available and disabled;
+4. under **Code scanning**, choose **Set up → Default**, ensure C# is selected,
+   review the default query suite, and enable CodeQL default setup if it is not
+   already enabled; do not add a duplicate advanced workflow.
+
+Then open **Settings → Actions → General → Workflow permissions**, select the
+read-only default token option, and leave **Allow GitHub Actions to create and
+approve pull requests** disabled. After one successful workflow run, open
+**Settings → Rules → Rulesets → Protect main**, add required status checks for
+`dotnet-validation`, `container-validation`, and `dependency-review`, and keep
+the approving-review count at zero unless another maintainer joins.
+
 SPDX-License-Identifier: AGPL-3.0-only

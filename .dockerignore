@@ -1,0 +1,11 @@
+**
+!Dockerfile
+!LICENSE
+!THIRD_PARTY_NOTICES.md
+!global.json
+!Directory.Build.props
+!Directory.Packages.props
+!src/
+!src/**
+src/**/bin/
+src/**/obj/

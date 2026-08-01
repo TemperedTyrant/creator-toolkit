@@ -1,0 +1,313 @@
+name: Repository validation
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dotnet-validation:
+    name: dotnet-validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CI: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      # actions/checkout v7.0.1
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Verify immutable action references
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -REn '^[[:space:]]*-[[:space:]]+uses:' .github/workflows \
+            | grep -Ev '@[0-9a-f]{40}[[:space:]]*$'; then
+            echo "Every workflow action must use a full 40-character commit SHA."
+            exit 1
+          fi
+
+      # actions/setup-dotnet v6.0.0
+      - name: Set up .NET from global.json
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build with zero warnings
+        run: >-
+          dotnet build
+          --no-restore
+          --disable-build-servers
+          -m:1
+          -warnaserror
+
+      - name: Install matching Playwright Chromium
+        shell: pwsh
+        run: >-
+          tests/TemperedTyrant.CreatorToolkit.IntegrationTests/bin/Debug/net10.0/playwright.ps1
+          install
+          --with-deps
+          chromium
+
+      - name: Run complete test suite
+        run: >-
+          dotnet test
+          --no-build
+          --disable-build-servers
+          -m:1
+
+      - name: Verify formatting
+        run: >-
+          dotnet format
+          --verify-no-changes
+          --no-restore
+
+      - name: Install matching EF command-line tool
+        run: >-
+          dotnet tool install
+          --tool-path "$RUNNER_TEMP/dotnet-tools"
+          dotnet-ef
+          --version 10.0.10
+
+      - name: Verify EF model is current
+        run: >-
+          "$RUNNER_TEMP/dotnet-tools/dotnet-ef"
+          migrations has-pending-model-changes
+          --project src/TemperedTyrant.CreatorToolkit.Infrastructure
+          --startup-project src/TemperedTyrant.CreatorToolkit.Web
+
+      - name: Audit NuGet vulnerabilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/nuget-vulnerabilities.json"
+          dotnet list TemperedTyrant.CreatorToolkit.slnx package \
+            --vulnerable \
+            --include-transitive \
+            --no-restore \
+            --format json > "$report"
+          if ! jq -e '
+            [
+              .projects[]?.frameworks[]?
+              | ((.topLevelPackages // []) + (.transitivePackages // []))[]
+              | select((.vulnerabilities // []) | length > 0)
+            ]
+            | length == 0
+          ' "$report" >/dev/null; then
+            jq -r '
+              .projects[]?.frameworks[]?
+              | ((.topLevelPackages // []) + (.transitivePackages // []))[]
+              | select((.vulnerabilities // []) | length > 0)
+              | "Vulnerable package: \(.id) \(.resolvedVersion)"
+            ' "$report"
+            exit 1
+          fi
+
+      - name: Reject deprecated production packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          production_projects=(
+            "src/TemperedTyrant.CreatorToolkit.Core/TemperedTyrant.CreatorToolkit.Core.csproj"
+            "src/TemperedTyrant.CreatorToolkit.Infrastructure/TemperedTyrant.CreatorToolkit.Infrastructure.csproj"
+            "src/TemperedTyrant.CreatorToolkit.Web/TemperedTyrant.CreatorToolkit.Web.csproj"
+          )
+          for project in "${production_projects[@]}"; do
+            project_name="$(basename "$project" .csproj)"
+            report="$RUNNER_TEMP/deprecated-$project_name.json"
+            dotnet list "$project" package \
+              --deprecated \
+              --include-transitive \
+              --no-restore \
+              --format json > "$report"
+            if ! jq -e '
+              [
+                .projects[]?.frameworks[]?
+                | ((.topLevelPackages // []) + (.transitivePackages // []))[]
+                | select((.deprecationReasons // []) | length > 0)
+              ]
+              | length == 0
+            ' "$report" >/dev/null; then
+              jq -r '
+                .projects[]?.frameworks[]?
+                | ((.topLevelPackages // []) + (.transitivePackages // []))[]
+                | select((.deprecationReasons // []) | length > 0)
+                | "Deprecated production package: \(.id) \(.resolvedVersion)"
+              ' "$report"
+              exit 1
+            fi
+          done
+
+      - name: Verify whitespace and generated-file cleanliness
+        run: git diff --check
+
+  container-validation:
+    name: container-validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      COMPOSE_PROJECT_NAME: creator-toolkit-ci
+      CREATOR_TOOLKIT_HOST_BIND: 127.0.0.1
+      CREATOR_TOOLKIT_HOST_PORT: "18080"
+    steps:
+      # actions/checkout v7.0.1
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      # docker/setup-qemu-action v4.2.0
+      - name: Set up QEMU for ARM64
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8
+        with:
+          image: docker.io/tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          platforms: arm64
+          cache-image: false
+
+      # docker/setup-buildx-action v4.2.0
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+        with:
+          version: v0.36.0
+          driver-opts: image=moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
+          cache-binary: false
+
+      - name: Validate Compose and native image build
+        run: |
+          set -euo pipefail
+          docker compose config --quiet
+          docker compose build
+
+      - name: Build complete image for AMD64 and ARM64
+        run: |
+          set -euo pipefail
+          docker buildx build --check .
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --output type=cacheonly \
+            .
+
+      - name: Run bounded native Compose smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose down --volumes --remove-orphans
+          docker compose up -d --build
+
+          health_status=""
+          for attempt in $(seq 1 45); do
+            container_id="$(docker compose ps -q creator-toolkit)"
+            if test -n "$container_id"; then
+              health_status="$(docker inspect \
+                --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' \
+                "$container_id")"
+              if test "$health_status" = "healthy"; then
+                break
+              fi
+            fi
+            sleep 2
+          done
+          test "$health_status" = "healthy"
+
+          docker compose exec -T creator-toolkit creator-toolkit healthcheck
+          container_id="$(docker compose ps -q creator-toolkit)"
+          test -n "$container_id"
+          docker top "$container_id" -eo pid,uid,gid,comm \
+            | awk 'NR == 2 { valid = ($2 == "1654" && $3 == "1654") }
+              END { exit valid ? 0 : 1 }'
+          test "$(docker port "$container_id" 8080/tcp)" = "127.0.0.1:18080"
+
+      - name: Inspect final runtime image
+        shell: bash
+        run: |
+          set -euo pipefail
+          inspection_id=""
+          cleanup_inspection() {
+            if test -n "$inspection_id"; then
+              docker rm --force --volumes "$inspection_id" >/dev/null
+            fi
+          }
+          trap cleanup_inspection EXIT
+
+          inspection_id="$(docker create \
+            --entrypoint /app/creator-toolkit \
+            creator-toolkit:local \
+            healthcheck)"
+          archive="$RUNNER_TEMP/creator-toolkit-rootfs.tar"
+          docker export --output "$archive" "$inspection_id"
+
+          tar -xOf "$archive" app/LICENSE | cmp - LICENSE
+          tar -xOf "$archive" app/THIRD_PARTY_NOTICES.md \
+            | cmp - THIRD_PARTY_NOTICES.md
+          test "$(tar --numeric-owner -tvf "$archive" \
+            | awk '$6 == "app/LICENSE" { print $1 }')" = "-r--r--r--"
+          test "$(tar --numeric-owner -tvf "$archive" \
+            | awk '$6 == "app/THIRD_PARTY_NOTICES.md" { print $1 }')" = "-r--r--r--"
+
+          tar --numeric-owner -tvf "$archive" \
+            | awk '
+              $1 ~ /^-/ && $6 ~ /^app\// && $6 !~ /^app\/data\// &&
+              ($2 != "0/0" || substr($1, 6, 1) == "w" || substr($1, 9, 1) == "w") {
+                invalid = 1
+              }
+              END { exit invalid ? 1 : 0 }
+            '
+
+          if tar -tf "$archive" | grep -Eiq \
+            '(\.cs$|\.csproj$|\.slnx$|\.pdb$|\.nupkg$|playwright|integrationtests|unittests|/sdk/|/\.git/|/\.nuget/|creator-toolkit\.db$|\.db-(shm|wal)$|/keys/[^/]+\.xml$|/\.env$|(^|/)(sh|bash|dash|curl|wget|apt|apt-get|apk|dpkg)$)'; then
+            echo "The runtime image contains a forbidden build, test, tool, or data artifact."
+            exit 1
+          fi
+
+          test -z "$(docker run --rm \
+            --entrypoint /usr/bin/dotnet \
+            creator-toolkit:local \
+            --list-sdks)"
+          for forbidden_path in \
+            /bin/sh \
+            /bin/bash \
+            /usr/bin/curl \
+            /usr/bin/wget \
+            /usr/bin/apt \
+            /usr/bin/dpkg; do
+            if docker run --rm \
+              --entrypoint "$forbidden_path" \
+              creator-toolkit:local >/dev/null 2>&1; then
+              echo "Forbidden runtime executable exists: $forbidden_path"
+              exit 1
+            fi
+          done
+
+      - name: Tear down disposable Compose state
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+
+  dependency-review:
+    name: dependency-review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # actions/dependency-review-action v5.0.0
+      - name: Review pull-request dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294
+        with:
+          fail-on-severity: high
