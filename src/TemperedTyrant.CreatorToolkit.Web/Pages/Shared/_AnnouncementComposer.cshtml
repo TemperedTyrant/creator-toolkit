@@ -24,9 +24,9 @@
             <button type="button" data-markdown-command="link" aria-label="HTTPS link">Link</button>
             <button type="button" data-markdown-command="spoiler" aria-label="Spoiler text">Spoiler</button>
             <button type="button" data-mention-trigger aria-label="Open mention controls" hidden>@@</button>
-            @if (Model.AllowUploads)
+            @if (Model.AllowUploads || Model.AllowOneTimeUpload)
             {
-                <button type="button" data-image-trigger aria-label="Add images">Image</button>
+                <button type="button" data-image-trigger aria-label="Add images" aria-expanded="false" aria-controls="composer-image-panel">Image</button>
             }
             <button type="button" data-advanced-trigger aria-label="Advanced presentation" hidden>More</button>
         </div>
@@ -42,7 +42,7 @@
             @for (int index = 0; index < Model.ExistingMedia.Count; index++)
             {
                 AnnouncementMediaEditInput media = Model.ExistingMedia[index];
-                <article class="media-card" data-saved-media data-sort-order="@media.SortOrder">
+                <article class="media-card" data-saved-media data-sort-order="@media.SortOrder" data-media-presentation="@media.Presentation">
                     @if (Model.AnnouncementId is not null)
                     {
                         <img src="/Announcements/@Model.AnnouncementId/Media/@media.Id" alt="@(media.AltText ?? string.Empty)" loading="lazy">
@@ -78,20 +78,57 @@
                             <input type="hidden" name="ExistingMedia[@index].AltText" value="@media.AltText">
                             <input type="hidden" name="ExistingMedia[@index].IsSpoiler" value="@media.IsSpoiler">
                             <input type="hidden" name="ExistingMedia[@index].Presentation" value="@media.Presentation">
-                            <label class="choice"><input type="checkbox" name="SelectedMediaIds" value="@media.Id" checked="@(Model.SelectedMediaIds?.Contains(media.Id) == true)"> Include this image</label>
+                            <span>@(string.IsNullOrWhiteSpace(media.AltText) ? "No alt text" : $"Alt text: {media.AltText}")</span>
+                            <label class="choice"><input type="checkbox" name="SelectedMediaIds" value="@media.Id" checked="@(Model.SelectedMediaIds?.Contains(media.Id) == true)"> Include this stored image</label>
                         }
                     </div>
                 </article>
             }
             <div data-new-media-list></div>
+            @if (Model.AllowOneTimeUpload)
+            {
+                <article class="media-card unsaved-media" data-one-time-media-card hidden>
+                    <img alt="One-time image preview" data-one-time-preview>
+                    <div class="media-card-fields">
+                        <strong>One-time image</strong>
+                        <span class="muted" data-one-time-image-detail>Used for this publication only</span>
+                        <label for="ImageAltText">Alt text</label>
+                        <input id="ImageAltText" name="ImageAltText" value="@Model.OneTimeAltText" maxlength="1024">
+                        <label class="choice"><input id="ImageSpoiler" name="ImageSpoiler" type="checkbox" value="true" checked="@Model.OneTimeSpoiler"> Mark as spoiler</label>
+                        <input name="ImageSpoiler" type="hidden" value="false">
+                        <label for="ImageInEmbed">Presentation</label>
+                        <select id="ImageInEmbed" name="ImageInEmbed">
+                            <option value="false" selected="@(!Model.OneTimeFeatured)">Attachment</option>
+                            <option value="true" selected="@Model.OneTimeFeatured">Featured image</option>
+                        </select>
+                        <button type="button" class="secondary danger-text" data-remove-one-time-image aria-label="Remove one-time publication image">Remove</button>
+                    </div>
+                </article>
+            }
         </div>
-        @if (Model.AllowUploads)
+        @if (Model.AllowUploads || Model.AllowOneTimeUpload)
         {
-            <div class="composer-image-panel" data-image-panel hidden>
-                <label for="NewImages">Upload images</label>
-                <input id="NewImages" name="NewImages" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
-                <p class="field-help">Up to four JPEG, PNG, WebP, or GIF images; 8 MiB combined. Images are encrypted when the draft is saved.</p>
-            </div>
+            <section id="composer-image-panel" class="composer-image-panel" data-image-panel tabindex="-1" aria-label="Image controls" hidden>
+                <div class="split-heading">
+                    <h3>Images</h3>
+                    <button type="button" class="secondary" data-image-close>Close image controls</button>
+                </div>
+                @if (Model.AllowUploads)
+                {
+                    <label for="NewImages">Upload images</label>
+                    <input id="NewImages" name="NewImages" type="file" accept=".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif" multiple>
+                    <p class="field-help">Up to four JPEG, PNG, WebP, or GIF images; 8 MiB combined. Images are encrypted when the draft is saved.</p>
+                }
+                @if (Model.AllowOneTimeUpload)
+                {
+                    <h4>Announcement images</h4>
+                    <p class="field-help">Stored images are selected in their cards above. Deselecting one does not change the draft.</p>
+                    <h4>One-time image</h4>
+                    <label for="UploadedImage">Upload image</label>
+                    <input id="UploadedImage" name="UploadedImage" type="file" accept=".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif">
+                    <p class="field-help">Used for this publication only. Stored and one-time images share the four-image and 8 MiB combined limits.</p>
+                }
+            </section>
         }
         <span data-valmsg-for="Media"></span>
     </div>

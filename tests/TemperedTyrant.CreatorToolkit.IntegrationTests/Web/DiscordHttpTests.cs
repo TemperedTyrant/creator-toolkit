@@ -178,6 +178,10 @@ public sealed partial class AnnouncementHttpTests
         AssertNoStoreAndSecurityHeaders(ownerPage);
         string ownerHtml = await ownerPage.Content.ReadAsStringAsync();
         string editorHtml = await editorPage.Content.ReadAsStringAsync();
+        Assert.Contains("data-image-trigger", ownerHtml, StringComparison.Ordinal);
+        Assert.Contains(">Image</button>", ownerHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"UploadedImage\"", ownerHtml, StringComparison.Ordinal);
+        Assert.Contains("Used for this publication only", ownerHtml, StringComparison.Ordinal);
         Assert.Contains("MentionEveryone", ownerHtml, StringComparison.Ordinal);
         Assert.DoesNotContain("MentionEveryone", editorHtml, StringComparison.Ordinal);
         AssertAccessDenied(await viewer.GetAsync(route));

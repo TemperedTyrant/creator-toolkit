@@ -41,6 +41,9 @@ public sealed partial class AnnouncementHttpTests
         Assert.True(Regex.Count(newHtml, "name=\"MessageContent\"", RegexOptions.CultureInvariant) == 1);
         Assert.Contains("data-announcement-composer", newHtml, StringComparison.Ordinal);
         Assert.Contains("data-markdown-command=\"bold\"", newHtml, StringComparison.Ordinal);
+        Assert.Contains("data-image-trigger", newHtml, StringComparison.Ordinal);
+        Assert.Contains(">Image</button>", newHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"NewImages\"", newHtml, StringComparison.Ordinal);
         Assert.Contains("type=\"button\"", newHtml, StringComparison.Ordinal);
         Assert.DoesNotContain("name=\"PlainContent\"", newHtml, StringComparison.Ordinal);
         Assert.DoesNotContain("name=\"EmbedDescription\"", newHtml, StringComparison.Ordinal);
@@ -68,6 +71,11 @@ public sealed partial class AnnouncementHttpTests
                         0)])).Status);
             mediaId = Assert.Single((await announcements.GetAsync(announcementId))!.Media).Id;
         }
+
+        string editHtml = await ownerClient.GetStringAsync($"/Announcements/{announcementId}/Edit");
+        Assert.Contains("data-image-trigger", editHtml, StringComparison.Ordinal);
+        Assert.Contains(">Image</button>", editHtml, StringComparison.Ordinal);
+        Assert.Contains("data-saved-media", editHtml, StringComparison.Ordinal);
 
         HttpResponseMessage preview = await ownerClient.GetAsync($"/Announcements/{announcementId}/Media/{mediaId}");
         Assert.Equal(HttpStatusCode.OK, preview.StatusCode);

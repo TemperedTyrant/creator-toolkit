@@ -4,6 +4,7 @@
 @using TemperedTyrant.CreatorToolkit.Infrastructure.Discord
 @using TemperedTyrant.CreatorToolkit.Web.Announcements
 <script src="/js/discord-member-search.js" type="module"></script>
+<script src="/js/discord-publication-review.js" type="module"></script>
 @{
     ViewData["Title"] = "Publish to Discord";
     var guildChoices = Model.Context?.Destinations
@@ -37,7 +38,11 @@
         ShowTitle: false,
         AllowUploads: false,
         Model.Id,
-        Model.SelectedMediaIds);
+        Model.SelectedMediaIds,
+        AllowOneTimeUpload: true,
+        Model.ImageAltText,
+        Model.ImageSpoiler,
+        Model.ImageInEmbed);
 }
 @if (Model.Context is not null)
 {
@@ -84,6 +89,7 @@
     else
     {
         <form method="post"
+              enctype="multipart/form-data"
               asp-page-handler="Publish"
               id="discord-publication-form"
               data-member-search-url="@Url.Page("/Announcements/PublishDiscord", "SearchMembers", new { id = Model.Id })">
@@ -184,26 +190,46 @@
                     <dt>Internal title (not sent)</dt><dd>@Model.Context.AnnouncementTitle</dd>
                     <dt>Announcement revision</dt><dd>@Model.AnnouncementRevision</dd>
                     <dt>Destinations</dt><dd>@(selectedChannels.Length == 0 ? "None selected" : string.Join(", ", selectedChannels))</dd>
-                    <dt>Presentation</dt><dd>@Model.Mode</dd>
-                    <dt>Stored images</dt><dd>@Model.SelectedMediaIds.Count selected</dd>
+                    <dt>Presentation</dt><dd data-reviewed-presentation>@Model.Mode</dd>
+                    <dt>Stored images</dt><dd data-reviewed-image-count>@Model.SelectedMediaIds.Count selected</dd>
                     @if (Model.ReviewImageFormat is not null)
                     {
                         <dt>Publication-only image</dt><dd>Validated @Model.ReviewImageFormat image · @Model.ReviewImageByteSize bytes · @(Model.ImageSpoiler ? "Spoiler" : "Standard")</dd>
                     }
                     <dt>Mass mention</dt><dd>@(Model.MentionEveryone ? "@@everyone" : Model.MentionHere ? "@@here" : "None")</dd>
                 </dl>
-                @if (!Model.ReviewComplete)
-                {
-                    <button type="submit" asp-page-handler="Review">Review publication</button>
-                }
-                else
-                {
+                <div class="review-media" data-review-media aria-label="Reviewed images" hidden="@(!Model.ReviewComplete)">
+                    @foreach (var media in mediaInputs.Where(value => Model.SelectedMediaIds.Contains(value.Id)).OrderBy(value => value.SortOrder))
+                    {
+                        <article class="review-media-card" data-reviewed-stored-media="@media.Id">
+                            <img src="/Announcements/@Model.Id/Media/@media.Id" alt="@(media.AltText ?? string.Empty)" loading="lazy">
+                            <div>
+                                <strong>Stored @media.ContentType[(media.ContentType.IndexOf('/') + 1)..].ToUpperInvariant() image</strong>
+                                <p>@media.ByteLength bytes · @(media.Presentation == AnnouncementMediaPresentation.FeaturedImage ? "Featured" : "Attachment")@(media.IsSpoiler ? " · Spoiler" : string.Empty)</p>
+                                <p>@(string.IsNullOrWhiteSpace(media.AltText) ? "No alt text" : $"Alt text: {media.AltText}")</p>
+                            </div>
+                        </article>
+                    }
+                    @if (Model.ReviewImageFormat is not null)
+                    {
+                        <article class="review-media-card" data-reviewed-one-time-media>
+                            <div data-one-time-review-preview aria-hidden="true"></div>
+                            <div>
+                                <strong>One-time @Model.ReviewImageFormat image</strong>
+                                <p>@Model.ReviewImageByteSize bytes · @(Model.ImageInEmbed ? "Featured" : "Attachment")@(Model.ImageSpoiler ? " · Spoiler" : string.Empty)</p>
+                                <p>@(Model.ReviewImageHasAltText ? "Alt text provided" : "No alt text") · Used for this publication only</p>
+                            </div>
+                        </article>
+                    }
+                </div>
+                <button type="submit" asp-page-handler="Review" data-review-publication hidden="@Model.ReviewComplete">Review publication</button>
+                <div data-review-confirmation hidden="@(!Model.ReviewComplete)">
                     <div class="notice" role="status">The server validated this immutable review. Confirming queues it; this request does not call Discord.</div>
                     <label class="choice"><input asp-for="FinalConfirmation" required> Queue this reviewed publication for Discord delivery.</label>
                     <span asp-validation-for="FinalConfirmation" class="field-validation-error"></span>
                     <button type="submit">Queue Discord publication</button>
-                    <button class="secondary" type="submit" asp-page-handler="Review">Validate review again</button>
-                }
+                    <button class="secondary" type="submit" asp-page-handler="Review" data-review-publication>Validate review again</button>
+                </div>
             </section>
         </form>
     }

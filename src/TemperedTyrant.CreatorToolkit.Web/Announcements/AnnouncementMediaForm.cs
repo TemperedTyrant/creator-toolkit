@@ -142,4 +142,8 @@ public sealed record AnnouncementComposerViewModel(
     bool ShowTitle,
     bool AllowUploads,
     Guid? AnnouncementId = null,
-    IReadOnlyCollection<Guid>? SelectedMediaIds = null);
+    IReadOnlyCollection<Guid>? SelectedMediaIds = null,
+    bool AllowOneTimeUpload = false,
+    string? OneTimeAltText = null,
+    bool OneTimeSpoiler = false,
+    bool OneTimeFeatured = false);

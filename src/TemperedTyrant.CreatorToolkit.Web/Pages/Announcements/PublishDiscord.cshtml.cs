@@ -323,6 +323,11 @@ public sealed class PublishDiscordModel(
         ModelState.Remove(nameof(ReviewComplete));
         ModelState.Remove(nameof(ReviewToken));
         ModelState.Remove(nameof(FinalConfirmation));
+        if (Request.Headers["X-Creator-Toolkit-Partial"] == "publication-review")
+        {
+            return ReviewPartialResponse(stagedUpload);
+        }
+
         return Page();
     }
 
@@ -755,6 +760,48 @@ public sealed class PublishDiscordModel(
         ReviewImageByteSize = image?.ByteSize;
         ReviewImageSafeFileName = image?.SafeFileName;
         ReviewImageHasAltText = image?.HasAltText ?? false;
+    }
+
+    private JsonResult ReviewPartialResponse(DiscordStagedUpload? stagedUpload)
+    {
+        object[] media = Context?.Media
+            .Where(value => SelectedMediaIds.Contains(value.Id))
+            .OrderBy(value => value.SortOrder)
+            .Select(value => (object)new
+            {
+                id = value.Id,
+                contentType = value.ContentType,
+                byteLength = value.ByteLength,
+                altText = value.AltText,
+                spoiler = value.IsSpoiler,
+                featured = value.Presentation
+                    == TemperedTyrant.CreatorToolkit.Core.Announcements.AnnouncementMediaPresentation.FeaturedImage,
+            })
+            .ToArray() ?? [];
+        string[] errors = ModelState.Values
+            .SelectMany(value => value.Errors)
+            .Select(value => value.ErrorMessage)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        return new JsonResult(new
+        {
+            status = ReviewComplete ? "ok" : "invalid",
+            reviewComplete = ReviewComplete,
+            reviewToken = ReviewComplete ? ReviewToken : null,
+            errors,
+            storedImages = media,
+            oneTimeImage = stagedUpload is null
+                ? null
+                : new
+                {
+                    format = stagedUpload.Format,
+                    byteSize = stagedUpload.ByteSize,
+                    spoiler = stagedUpload.Spoiler,
+                    featured = stagedUpload.EmbedPlacement,
+                    hasAltText = stagedUpload.HasAltText,
+                },
+        });
     }
 
     private sealed record ReviewState(string Fingerprint, string? UploadHandle);

@@ -13,6 +13,10 @@
         const textarea = root.querySelector("textarea[name='MessageContent']");
         const count = root.querySelector(".character-count");
         const fileInput = root.querySelector("input[name='NewImages']");
+        const oneTimeInput = root.querySelector("input[name='UploadedImage']");
+        const oneTimeCard = root.querySelector("[data-one-time-media-card]");
+        const oneTimePreview = root.querySelector("[data-one-time-preview]");
+        const oneTimeDetail = root.querySelector("[data-one-time-image-detail]");
         const newList = root.querySelector("[data-new-media-list]");
         const mediaList = root.querySelector("[data-media-list]");
         const imagePanel = root.querySelector("[data-image-panel]");
@@ -37,9 +41,16 @@
             button.addEventListener("mousedown", event => event.preventDefault());
             button.addEventListener("click", () => applyMarkdown(button.dataset.markdownCommand));
         }
-        root.querySelector("[data-image-trigger]")?.addEventListener("click", () => {
+        const imageTrigger = root.querySelector("[data-image-trigger]");
+        imageTrigger?.addEventListener("click", () => {
             imagePanel.hidden = !imagePanel.hidden;
-            if (!imagePanel.hidden) fileInput?.focus();
+            imageTrigger.setAttribute("aria-expanded", String(!imagePanel.hidden));
+            if (!imagePanel.hidden) imagePanel.focus();
+        });
+        root.querySelector("[data-image-close]")?.addEventListener("click", () => {
+            imagePanel.hidden = true;
+            imageTrigger?.setAttribute("aria-expanded", "false");
+            imageTrigger?.focus();
         });
         const form = root.closest("form");
         const mentionPanel = form?.querySelector("[data-mention-panel]");
@@ -199,7 +210,39 @@
             });
             updateOrders();
         };
+        const clearOneTimeImage = () => {
+            if (!oneTimeInput || !oneTimeCard) return;
+            oneTimeInput.value = "";
+            oneTimeCard.hidden = true;
+            if (oneTimePreview) oneTimePreview.removeAttribute("src");
+            for (const url of objectUrls) URL.revokeObjectURL(url);
+            objectUrls.clear();
+            oneTimeInput.focus();
+        };
+        const renderOneTimeImage = () => {
+            if (!oneTimeInput || !oneTimeCard) return;
+            for (const url of objectUrls) URL.revokeObjectURL(url);
+            objectUrls.clear();
+            const file = oneTimeInput.files[0];
+            oneTimeCard.hidden = !file;
+            if (!file) return;
+            if (oneTimeDetail) {
+                oneTimeDetail.textContent = `${file.type || "image"} · ${file.size.toLocaleString()} bytes · Used for this publication only`;
+            }
+            if (oneTimePreview) {
+                createSafePreviewUrl(file).then(objectUrl => {
+                    if (oneTimeInput.files[0] !== file) {
+                        URL.revokeObjectURL(objectUrl);
+                        return;
+                    }
+                    objectUrls.add(objectUrl);
+                    oneTimePreview.src = objectUrl;
+                }).catch(() => oneTimePreview.removeAttribute("src"));
+            }
+        };
         fileInput?.addEventListener("change", renderNewFiles);
+        oneTimeInput?.addEventListener("change", renderOneTimeImage);
+        root.querySelector("[data-remove-one-time-image]")?.addEventListener("click", clearOneTimeImage);
         textarea.addEventListener("input", updateCount);
         window.addEventListener("pagehide", () => {
             for (const url of objectUrls) URL.revokeObjectURL(url);

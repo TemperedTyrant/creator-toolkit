@@ -68,22 +68,31 @@ public sealed partial class AnnouncementBrowserTests
             await page.Locator("#Title").FillAsync(title);
             await page.Locator("#MessageContent").FillAsync(body);
             await page.GetByRole(AriaRole.Button, new() { Name = "Add images" }).ClickAsync();
+            Assert.Equal("true", await page.GetByRole(AriaRole.Button, new() { Name = "Add images" }).GetAttributeAsync("aria-expanded"));
+            Assert.True(await page.Locator("[data-image-panel]").EvaluateAsync<bool>("panel => document.activeElement === panel"));
+            await page.GetByRole(AriaRole.Button, new() { Name = "Close image controls" }).ClickAsync();
+            Assert.True(await page.GetByRole(AriaRole.Button, new() { Name = "Add images" }).EvaluateAsync<bool>("button => document.activeElement === button"));
+            await page.GetByRole(AriaRole.Button, new() { Name = "Add images" }).ClickAsync();
             await page.Locator("#NewImages").SetInputFilesAsync(
                 [
                     new FilePayload
                     {
                         Name = "first.png",
                         MimeType = "image/png",
-                        Buffer = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x41],
+                        Buffer = Convert.FromBase64String(
+                            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="),
                     },
                     new FilePayload
                     {
                         Name = "second.gif",
                         MimeType = "image/gif",
-                        Buffer = [0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x42],
+                        Buffer = Convert.FromBase64String(
+                            "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="),
                     },
                 ]);
             Assert.Equal(2, await page.Locator(".unsaved-media").CountAsync());
+            await page.WaitForFunctionAsync(
+                "() => [...document.querySelectorAll('.unsaved-media img')].every(image => image.src.startsWith('blob:'))");
             Assert.All(
                 await page.Locator(".unsaved-media img").EvaluateAllAsync<string[]>("images => images.map(image => image.src)"),
                 source => Assert.StartsWith("blob:", source, StringComparison.Ordinal));

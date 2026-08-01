@@ -385,6 +385,19 @@ internal sealed class DiscordPublishingService(
         {
             throw new DiscordPublicationValidationException("Select no more than four images.");
         }
+
+        if (request.Images.Sum(value => (long)value.Bytes.Length)
+                > AnnouncementMediaAsset.MaximumCombinedBytes)
+        {
+            throw new DiscordPublicationValidationException(
+                "Selected images must be no larger than 8 MiB combined.");
+        }
+
+        if (request.Images.Count(value => value.EmbedPlacement) > 1)
+        {
+            throw new DiscordPublicationValidationException(
+                "Select no more than one Featured image.");
+        }
     }
 
     private async Task<DiscordPublishRequest> HydrateStoredMediaAsync(
@@ -399,7 +412,6 @@ internal sealed class DiscordPublishingService(
 
         if (requestedIds.Length > AnnouncementMediaAsset.MaximumAssetCount
             || requestedIds.Length != request.AnnouncementMediaIds!.Count
-            || request.UploadedImage is not null
             || request.StoredImages is { Count: > 0 })
         {
             throw new DiscordPublicationValidationException(
@@ -419,11 +431,21 @@ internal sealed class DiscordPublishingService(
                 "One or more selected announcement images are unavailable.");
         }
 
-        if (media.Sum(value => (long)value.ByteLength) > AnnouncementMediaAsset.MaximumCombinedBytes
-            || media.Count(value => value.Presentation == AnnouncementMediaPresentation.FeaturedImage) > 1)
+        long combinedBytes = media.Sum(value => (long)value.ByteLength)
+            + (request.UploadedImage?.Bytes.LongLength ?? 0);
+        int combinedCount = media.Length + (request.UploadedImage is null ? 0 : 1);
+        int featuredCount = media.Count(value =>
+                value.Presentation == AnnouncementMediaPresentation.FeaturedImage)
+            + (request.UploadedImage?.EmbedPlacement == true ? 1 : 0);
+        if (combinedBytes > AnnouncementMediaAsset.MaximumCombinedBytes
+            || combinedCount > AnnouncementMediaAsset.MaximumAssetCount
+            || featuredCount > 1)
         {
-            throw new DiscordPublicationValidationException(
-                "The selected announcement images are invalid.");
+            throw new DiscordPublicationValidationException(combinedCount > AnnouncementMediaAsset.MaximumAssetCount
+                ? "Select no more than four stored and one-time images combined."
+                : combinedBytes > AnnouncementMediaAsset.MaximumCombinedBytes
+                    ? "Selected stored and one-time images must be no larger than 8 MiB combined."
+                    : "Select no more than one Featured image.");
         }
 
         var images = new List<DiscordValidatedImage>(media.Length);
@@ -442,7 +464,6 @@ internal sealed class DiscordPublishingService(
 
             return request with
             {
-                UploadedImage = null,
                 StoredImages = images,
                 AnnouncementMediaIds = [],
             };
@@ -468,9 +489,15 @@ internal sealed class DiscordPublishingService(
             return;
         }
 
+        byte[][] originalBytes = original.Images
+            .Select(value => value.Bytes)
+            .ToArray();
         foreach (DiscordValidatedImage image in hydrated.Images)
         {
-            CryptographicOperations.ZeroMemory(image.Bytes);
+            if (!originalBytes.Any(value => ReferenceEquals(value, image.Bytes)))
+            {
+                CryptographicOperations.ZeroMemory(image.Bytes);
+            }
         }
     }
 

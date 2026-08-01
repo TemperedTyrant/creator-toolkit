@@ -272,11 +272,14 @@ public sealed record DiscordPublishRequest(
     IReadOnlyList<Guid>? AnnouncementMediaIds = null)
 {
     [JsonIgnore]
-    public IReadOnlyList<DiscordValidatedImage> Images => StoredImages is { Count: > 0 }
-        ? StoredImages
-        : UploadedImage is null
-            ? []
-            : [UploadedImage];
+    public IReadOnlyList<DiscordValidatedImage> Images =>
+        StoredImages is { Count: > 0 }
+            ? UploadedImage is null
+                ? StoredImages
+                : [.. StoredImages, UploadedImage]
+            : UploadedImage is null
+                ? []
+                : [UploadedImage];
 }
 
 public enum DiscordDeliveryStatus
