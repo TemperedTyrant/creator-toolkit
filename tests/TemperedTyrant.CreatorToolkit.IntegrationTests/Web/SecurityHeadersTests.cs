@@ -85,6 +85,26 @@ public sealed class SecurityHeadersTests
         Assert.Equal("no-store", sensitiveContext.Response.Headers.CacheControl);
         Assert.Equal("no-cache", sensitiveContext.Response.Headers.Pragma);
 
+        DefaultHttpContext sensitiveScriptContext = new();
+        sensitiveScriptContext.SetEndpoint(
+            new Endpoint(
+                _ => Task.CompletedTask,
+                new EndpointMetadataCollection(
+                    new SensitiveScriptSecurityHeaderProfileAttribute()),
+                "sensitive-script"));
+
+        await middleware.InvokeAsync(sensitiveScriptContext);
+
+        Assert.Equal(
+            "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; "
+            + "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+            sensitiveScriptContext.Response.Headers.ContentSecurityPolicy);
+        Assert.DoesNotContain(
+            "'unsafe-inline'",
+            sensitiveScriptContext.Response.Headers.ContentSecurityPolicy,
+            StringComparison.Ordinal);
+        Assert.Equal("no-store", sensitiveScriptContext.Response.Headers.CacheControl);
+
         DefaultHttpContext applicationContext = new();
         await middleware.InvokeAsync(applicationContext);
         Assert.Equal(

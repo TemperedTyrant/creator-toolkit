@@ -1,0 +1,133 @@
+@page "/Destinations/Discord/{id:guid}"
+@model TemperedTyrant.CreatorToolkit.Web.Pages.Destinations.Discord.DetailsModel
+@{
+    ViewData["Title"] = Model.Details?.Connection.Name ?? "Discord connection";
+}
+@if (Model.Details is not null)
+{
+    var connection = Model.Details.Connection;
+    <header class="page-heading split-heading">
+        <div><h1>@connection.Name</h1><p class="lede">Discord bot connection</p></div>
+        <a asp-page="/Destinations">Back to destinations</a>
+    </header>
+    @if (Model.StatusMessage is not null)
+    {
+        <section class="notice" role="status"><p>@Model.StatusMessage</p></section>
+    }
+    <section class="card">
+        <h2>Bot identity</h2>
+        <dl class="status-list">
+            <dt>Bot</dt><dd>@connection.BotUsername</dd>
+            <dt>Bot user ID</dt><dd>@connection.BotUserId</dd>
+            <dt>Application ID</dt><dd>@connection.ApplicationId</dd>
+            <dt>Token</dt><dd>Configured (encrypted; never displayed)</dd>
+            <dt>State</dt><dd>@(connection.Enabled ? "Enabled" : "Disabled")</dd>
+        </dl>
+        <div class="actions">
+            <a class="button" href="@Model.Details.InstallationUri" rel="noreferrer">Install bot in Discord</a>
+            @if (Model.CanManage)
+            {
+                <form method="post" asp-page-handler="RefreshIdentity">
+                    <input type="hidden" name="revision" value="@connection.Revision">
+                    <button class="secondary" type="submit">Refresh bot identity</button>
+                </form>
+            }
+        </div>
+        <p class="muted">The standard link requests View Channels, Send Messages, Embed Links, and Attach Files. It does not request Administrator, application commands, or Mention Everyone.</p>
+    </section>
+    @if (Model.CanManage)
+    {
+        <section class="card">
+            <h2>Replace bot token</h2>
+            <form method="post" asp-page-handler="ReplaceToken" autocomplete="off">
+                <input type="hidden" name="revision" value="@connection.Revision">
+                <label asp-for="BotToken">New bot token</label>
+                <input asp-for="BotToken" type="password" value="" autocomplete="new-password" spellcheck="false">
+                <button type="submit">Validate and replace</button>
+            </form>
+        </section>
+    }
+    <section class="card">
+        <h2>Discord servers</h2>
+        @if (Model.Guilds.Count == 0)
+        {
+            <p>Install this bot in a server, then refresh this page.</p>
+        }
+        else
+        {
+            <form method="get">
+                <input type="hidden" name="id" value="@Model.Id">
+                <label asp-for="GuildId">Server</label>
+                <select asp-for="GuildId">
+                    <option value="">Choose a server</option>
+                    @foreach (var guild in Model.Guilds)
+                    {
+                        <option value="@guild.Id">@guild.Name (@guild.Id)</option>
+                    }
+                </select>
+                <button type="submit">View usable channels</button>
+            </form>
+        }
+        @if (Model.Discovery is not null)
+        {
+            <form method="post" asp-page-handler="SaveChannels">
+                <input type="hidden" asp-for="GuildId">
+                <fieldset>
+                    <legend>Channels where the bot can view and send messages</legend>
+                    @foreach (var channel in Model.Discovery.Channels)
+                    {
+                        <label class="choice"><input type="checkbox" name="ChannelIds" value="@channel.Id"> #@channel.Name <span class="muted">Send · @(channel.CanEmbed ? "Embed" : "No embeds") · @(channel.CanAttach ? "Attach" : "No attachments") · @(channel.CanMentionEveryone ? "Mass mention" : "No mass mention")</span></label>
+                    }
+                </fieldset>
+                @if (Model.CanManage)
+                {
+                    <button type="submit">Save selected channels</button>
+                }
+            </form>
+        }
+    </section>
+    <section>
+        <h2>Saved channel destinations</h2>
+        @if (Model.Details.Destinations.Count == 0)
+        {
+            <p class="muted">No channels saved.</p>
+        }
+        @foreach (var destination in Model.Details.Destinations)
+        {
+            <article class="card">
+                <h3>@destination.GuildName · #@destination.ChannelName</h3>
+                <p>@(destination.Enabled ? "Enabled" : "Disabled")</p>
+                @if (Model.CanManage)
+                {
+                    <div class="actions">
+                        <form method="post" asp-page-handler="DestinationEnable">
+                            <input type="hidden" name="destinationId" value="@destination.Id"><input type="hidden" name="revision" value="@destination.Revision"><input type="hidden" name="enabled" value="@((!destination.Enabled).ToString().ToLowerInvariant())">
+                            <button class="secondary" type="submit">@(destination.Enabled ? "Disable" : "Enable")</button>
+                        </form>
+                        <form method="post" asp-page-handler="Test">
+                            <input type="hidden" name="destinationId" value="@destination.Id"><input type="hidden" name="revision" value="@destination.Revision">
+                            <label class="choice"><input type="checkbox" name="confirmed" value="true" required> Confirm sending the fixed test message</label>
+                            <button type="submit">Send test</button>
+                        </form>
+                        <form method="post" asp-page-handler="DeleteDestination">
+                            <input type="hidden" name="destinationId" value="@destination.Id"><input type="hidden" name="revision" value="@destination.Revision">
+                            <button class="danger" type="submit">Delete destination</button>
+                        </form>
+                    </div>
+                }
+            </article>
+        }
+    </section>
+    @if (Model.CanManage)
+    {
+        <section class="card">
+            <h2>Delete connection</h2>
+            <p>This permanently removes the encrypted bot credential and all saved channel destinations.</p>
+            <form method="post" asp-page-handler="Delete">
+                <input type="hidden" name="revision" value="@connection.Revision">
+                <label class="choice"><input type="checkbox" name="confirmed" value="true" required> Confirm permanent deletion</label>
+                <button class="danger" type="submit">Delete Discord connection</button>
+            </form>
+        </section>
+    }
+}

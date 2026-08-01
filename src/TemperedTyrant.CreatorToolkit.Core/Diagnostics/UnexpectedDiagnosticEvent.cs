@@ -33,6 +33,7 @@ public enum DiagnosticOperation
 {
     HttpRequest = 1,
     PersistenceInitialization = 2,
+    DiscordServerDiscovery = 3,
 }
 
 public enum DiagnosticExceptionType

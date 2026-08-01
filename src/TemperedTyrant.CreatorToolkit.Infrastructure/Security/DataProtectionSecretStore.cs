@@ -6,7 +6,7 @@ using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
 namespace TemperedTyrant.CreatorToolkit.Infrastructure.Security;
 
 internal sealed class DataProtectionSecretStore(
-    IDbContextFactory<CreatorToolkitDbContext> contextFactory,
+    CreatorToolkitDbContext context,
     IDataProtectionProvider dataProtectionProvider,
     TimeProvider timeProvider) : ISecretStore
 {
@@ -31,8 +31,6 @@ internal sealed class DataProtectionSecretStore(
             UpdatedAtUtc = now,
         };
 
-        await using CreatorToolkitDbContext context =
-            await contextFactory.CreateDbContextAsync(cancellationToken);
         context.ProtectedSecrets.Add(record);
         await context.SaveChangesAsync(cancellationToken);
         return new SecretReference(record.Id);
@@ -45,11 +43,10 @@ internal sealed class DataProtectionSecretStore(
     {
         ArgumentException.ThrowIfNullOrEmpty(value);
 
-        await using CreatorToolkitDbContext context =
-            await contextFactory.CreateDbContextAsync(cancellationToken);
         ProtectedSecretRecord record = await context.ProtectedSecrets
             .SingleOrDefaultAsync(candidate => candidate.Id == secret.Id, cancellationToken)
             ?? throw new KeyNotFoundException("The protected secret does not exist.");
+        await context.Entry(record).ReloadAsync(cancellationToken);
 
         record.Ciphertext = CreateProtector(record.Purpose).Protect(value);
         record.UpdatedAtUtc = timeProvider.GetUtcNow();
@@ -60,8 +57,6 @@ internal sealed class DataProtectionSecretStore(
         SecretReference secret,
         CancellationToken cancellationToken = default)
     {
-        await using CreatorToolkitDbContext context =
-            await contextFactory.CreateDbContextAsync(cancellationToken);
         ProtectedSecretRecord? record = await context.ProtectedSecrets
             .SingleOrDefaultAsync(candidate => candidate.Id == secret.Id, cancellationToken);
 
@@ -69,6 +64,8 @@ internal sealed class DataProtectionSecretStore(
         {
             return false;
         }
+
+        await context.Entry(record).ReloadAsync(cancellationToken);
 
         context.ProtectedSecrets.Remove(record);
         await context.SaveChangesAsync(cancellationToken);

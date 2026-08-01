@@ -10,9 +10,8 @@ machine-readable identifier remains `creator-toolkit`.
 
 > [!WARNING]
 > TemperedTyrant Creator Toolkit is in pre-alpha development.
-> The milestone 1 foundation and announcement draft authoring are implemented,
-> but no stable release is available yet and external publishing is not
-> implemented.
+> The milestone 1 foundation, announcement draft authoring, and foreground
+> Discord bot publishing are implemented, but no stable release is available.
 
 Creator Announcements is the first module being implemented and released.
 Authorized users can now create, edit, archive, restore, search, and delete
@@ -36,9 +35,9 @@ social-media management, analytics, engagement, or advertising product.
   sanitized diagnostics.
 - A server-rendered, mobile-responsive interface with minimal JavaScript.
 
-Initial free destinations are:
+Planned and implemented free destinations are:
 
-- Discord incoming webhooks;
+- Discord bot HTTP publishing (implemented for foreground manual sends);
 - Bluesky using a dedicated app password and supported AT Protocol posting;
 - generic outgoing HTTPS webhooks.
 
@@ -97,7 +96,8 @@ persistence, backup, shutdown, and reverse-proxy boundaries.
 No separate worker service, process, or container. Durable background jobs run through ASP.NET Core hosted services inside the application process.
 
 See [Product](docs/PRODUCT.md), [Architecture](docs/ARCHITECTURE.md),
-[Security design](docs/SECURITY.md), [Deployment](docs/DEPLOYMENT.md), and the
+[Security design](docs/SECURITY.md), [Discord setup](docs/DISCORD.md),
+[Deployment](docs/DEPLOYMENT.md), and the
 [Roadmap](docs/ROADMAP.md) for the current design.
 
 ## Project principles

@@ -35,6 +35,19 @@ public enum AuditEventCode
     AnnouncementArchived = 21,
     AnnouncementRestored = 22,
     AnnouncementDeleted = 23,
+    DiscordConnectionCreated = 24,
+    DiscordTokenReplaced = 25,
+    DiscordConnectionEnabled = 26,
+    DiscordConnectionDisabled = 27,
+    DiscordConnectionDeleted = 28,
+    DiscordDestinationAdded = 29,
+    DiscordDestinationEnabled = 30,
+    DiscordDestinationDisabled = 31,
+    DiscordDestinationDeleted = 32,
+    DiscordDestinationTestSent = 33,
+    DiscordPublicationRequested = 34,
+    DiscordPublicationChannelSucceeded = 35,
+    DiscordPublicationChannelFailed = 36,
 }
 
 public enum AuditOutcome

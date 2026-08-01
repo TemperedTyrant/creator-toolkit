@@ -44,5 +44,6 @@ supersedes the old one and update this index.
 | [0003](0003-single-container-deployment.md) | Accepted | Ship one application container and one named volume |
 | [0004](0004-agpl-3.0-only-license.md) | Accepted | License the project under AGPL-3.0-only |
 | [0005](0005-creator-event-action-seam.md) | Accepted | Establish a reusable creator-event/action seam without a premature generic workflow engine |
+| [0006](0006-discord-bot-http-transport.md) | Accepted | Use a server-installed Discord bot over the fixed HTTP API v10 transport |
 
 SPDX-License-Identifier: AGPL-3.0-only

@@ -228,6 +228,26 @@ textarea {
     resize: vertical;
 }
 
+fieldset {
+    margin-block: 1rem;
+    padding: 0.75rem 1rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+}
+
+.choice {
+    display: flex;
+    align-items: start;
+    gap: 0.55rem;
+    font-weight: 500;
+}
+
+.choice input {
+    width: auto;
+    min-height: auto;
+    margin-top: 0.35rem;
+}
+
 .split-heading,
 .filter-form,
 .pagination {

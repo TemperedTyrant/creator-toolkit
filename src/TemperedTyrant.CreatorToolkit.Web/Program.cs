@@ -11,6 +11,7 @@ using TemperedTyrant.CreatorToolkit.Web.Authorization;
 using TemperedTyrant.CreatorToolkit.Web.Commands;
 using TemperedTyrant.CreatorToolkit.Web.Configuration;
 using TemperedTyrant.CreatorToolkit.Web.Diagnostics;
+using TemperedTyrant.CreatorToolkit.Web.Discord;
 using TemperedTyrant.CreatorToolkit.Web.ErrorHandling;
 using TemperedTyrant.CreatorToolkit.Web.Health;
 using TemperedTyrant.CreatorToolkit.Web.Hosting;
@@ -66,6 +67,8 @@ builder.Services.ConfigureApplicationCookie(
     });
 builder.Services.AddScoped<CreatorToolkitCookieEvents>();
 builder.Services.AddScoped<DebugStatusService>();
+builder.Services.AddSingleton<DiscordPublicationResultStore>();
+builder.Services.AddSingleton<DiscordEphemeralUploadStore>();
 builder.Services.AddSingleton<ApplicationHostLockLifetime>();
 builder.Services.AddSingleton<IHostedService>(
     provider => provider.GetRequiredService<ApplicationHostLockLifetime>());

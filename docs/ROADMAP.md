@@ -60,8 +60,10 @@ non-retrievability, and application/database/container smoke tests pass.
 checkpoint also implements plain-text announcement draft creation, listing,
 details, editing, archive/restore, permanent deletion, search, filtering,
 pagination, revision-bound concurrency, role authorization, and transactional
-audit records. Drafts persist in SQLite across application restarts. External
-publishing is not implemented.
+audit records. Drafts persist in SQLite across application restarts. Foreground
+Discord bot setup, channel discovery, permission-aware destination saving, and
+manual per-channel publishing are also implemented. Scheduling, durable jobs,
+automatic retries, publishing history, and other providers are not.
 
 ## 2. Core announcements, approvals, and durable publishing
 
@@ -88,12 +90,16 @@ one destination failure does not block another.
 
 ## 3. Discord and generic outgoing-webhook destinations
 
-Deliver Discord incoming-webhook:
+**Implemented for Discord:** user-owned bot credential entry/replacement,
+least-privilege installation links, live server/channel/role/member discovery,
+effective channel-permission calculation, saved destinations, fixed test
+messages, safe mention controls, plain and rich-embed composition, request-only
+images, foreground Create Message delivery, bounded rate-limit handling, and
+independent per-channel results. The bot transport uses outbound Discord HTTP
+API v10 only; no Gateway, incoming event, slash command, or public callback is
+present.
 
-- credential entry/replacement, connection testing, safe content validation,
-  preview, publication, provider receipt handling, and rate-limit
-  classification;
-- safe mention defaults and independent delivery results.
+The generic outgoing HTTPS webhook remains planned:
 
 Deliver generic outgoing HTTPS webhook:
 
