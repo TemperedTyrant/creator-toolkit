@@ -56,7 +56,18 @@ bootstrap credential, every placeholder protected operation is enforced
 server-side for all roles, secret-store tests prove encryption and
 non-retrievability, and application/database/container smoke tests pass.
 
+**Implemented:** the milestone 1 foundation is complete. The first product
+checkpoint also implements plain-text announcement draft creation, listing,
+details, editing, archive/restore, permanent deletion, search, filtering,
+pagination, revision-bound concurrency, role authorization, and transactional
+audit records. Drafts persist in SQLite across application restarts. External
+publishing is not implemented.
+
 ## 2. Core announcements, approvals, and durable publishing
+
+The remaining items in this milestone are planned future checkpoints. The
+implemented authoring aggregate contains only Draft and Archived states and has
+no destination, delivery, scheduling, approval, provider, or job behavior.
 
 Deliver:
 

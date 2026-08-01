@@ -56,6 +56,11 @@ public sealed class AuditRecord
                 AuditEventCode.OwnerRecovered => "identity.owner-recovered",
                 AuditEventCode.OwnershipTransferRejected =>
                     "identity.ownership-transfer-rejected",
+                AuditEventCode.AnnouncementCreated => "announcement.created",
+                AuditEventCode.AnnouncementUpdated => "announcement.updated",
+                AuditEventCode.AnnouncementArchived => "announcement.archived",
+                AuditEventCode.AnnouncementRestored => "announcement.restored",
+                AuditEventCode.AnnouncementDeleted => "announcement.deleted",
                 _ => throw new ArgumentOutOfRangeException(
                     nameof(auditEvent),
                     "The audit event code is not supported."),

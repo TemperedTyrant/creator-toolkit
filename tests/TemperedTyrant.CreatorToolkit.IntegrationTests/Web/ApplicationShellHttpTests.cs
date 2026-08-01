@@ -302,6 +302,7 @@ public sealed partial class ApplicationShellHttpTests
         string dashboard = await client.GetStringAsync("/Dashboard");
         Assert.Contains("owner-local", dashboard, StringComparison.Ordinal);
         Assert.Contains(">Owner<", dashboard, StringComparison.Ordinal);
+        Assert.Contains("Draft authoring available", dashboard, StringComparison.Ordinal);
         Assert.Contains("Not implemented", dashboard, StringComparison.Ordinal);
         Assert.Contains(
             "name=\"viewport\"",
@@ -313,7 +314,13 @@ public sealed partial class ApplicationShellHttpTests
         Assert.DoesNotContain("http://", dashboard, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("https://", dashboard, StringComparison.OrdinalIgnoreCase);
 
-        foreach (string route in ProductRoutes.Skip(1))
+        HttpResponseMessage announcements = await client.GetAsync("/Announcements");
+        string announcementsHtml = await announcements.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, announcements.StatusCode);
+        Assert.Contains("Create announcement", announcementsHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Not implemented", announcementsHtml, StringComparison.Ordinal);
+
+        foreach (string route in ProductRoutes.Skip(2))
         {
             HttpResponseMessage response = await client.GetAsync(route);
             string html = await response.Content.ReadAsStringAsync();

@@ -1,0 +1,53 @@
+@page "/Announcements/{id:guid}"
+@model TemperedTyrant.CreatorToolkit.Web.Pages.Announcements.DetailsModel
+@using TemperedTyrant.CreatorToolkit.Core.Announcements
+@{
+    ViewData["Title"] = Model.Item?.Title ?? "Announcement";
+}
+@if (Model.Item is not null)
+{
+    <header class="page-heading split-heading">
+        <div>
+            <h1>@Model.Item.Title</h1>
+            <span class="status-badge status-@Model.Item.Status.ToString().ToLowerInvariant()">@Model.Item.Status</span>
+        </div>
+        <a asp-page="/Announcements/Index">Back to announcements</a>
+    </header>
+    @if (Model.StatusMessage is not null)
+    {
+        <section class="notice" role="status">
+            <p>@Model.StatusMessage</p>
+        </section>
+    }
+    <section class="card announcement-content" aria-labelledby="content-heading">
+        <h2 id="content-heading">Announcement content</h2>
+        <div class="announcement-body">@Model.Item.Body</div>
+    </section>
+    <dl class="status-list announcement-metadata">
+        <dt>Created</dt>
+        <dd><time datetime="@Model.Item.CreatedAtUtc.ToString("O")">@Model.Item.CreatedAtUtc.ToString("u")</time></dd>
+        <dt>Updated</dt>
+        <dd><time datetime="@Model.Item.UpdatedAtUtc.ToString("O")">@Model.Item.UpdatedAtUtc.ToString("u")</time></dd>
+    </dl>
+    @if (Model.CanEdit)
+    {
+        <div class="actions">
+            @if (Model.Item.Status == AnnouncementStatus.Draft)
+            {
+                <a class="button" asp-page="/Announcements/Edit" asp-route-id="@Model.Item.Id">Edit draft</a>
+                <form method="post" asp-page="/Announcements/Archive" asp-route-id="@Model.Item.Id">
+                    <input type="hidden" name="Revision" value="@Model.Item.Revision">
+                    <button class="secondary" type="submit">Archive</button>
+                </form>
+            }
+            else
+            {
+                <form method="post" asp-page="/Announcements/Restore" asp-route-id="@Model.Item.Id">
+                    <input type="hidden" name="Revision" value="@Model.Item.Revision">
+                    <button type="submit">Restore to Draft</button>
+                </form>
+            }
+            <a class="button danger" asp-page="/Announcements/Delete" asp-route-id="@Model.Item.Id">Delete permanently</a>
+        </div>
+    }
+}

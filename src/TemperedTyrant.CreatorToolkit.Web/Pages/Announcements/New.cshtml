@@ -1,0 +1,29 @@
+@page "/Announcements/New"
+@model TemperedTyrant.CreatorToolkit.Web.Pages.Announcements.NewModel
+@{
+    ViewData["Title"] = "Create announcement";
+}
+<header class="page-heading">
+    <h1>Create announcement</h1>
+    <p class="lede">Save a plain-text draft. Publishing is not available.</p>
+</header>
+<form method="post" class="card editor-form">
+    <input asp-for="AnnouncementId" type="hidden">
+    <div asp-validation-summary="ModelOnly"></div>
+    <div>
+        <label asp-for="Title"></label>
+        <input asp-for="Title" maxlength="400" autocomplete="off" aria-describedby="title-help">
+        <p id="title-help" class="field-help">Required. Maximum 200 Unicode characters.</p>
+        <span asp-validation-for="Title"></span>
+    </div>
+    <div>
+        <label asp-for="Body">Announcement content</label>
+        <textarea asp-for="Body" rows="16" maxlength="20000" aria-describedby="body-help"></textarea>
+        <p id="body-help" class="field-help">Required plain text. Maximum 10,000 Unicode characters.</p>
+        <span asp-validation-for="Body"></span>
+    </div>
+    <div class="actions">
+        <button type="submit">Save draft</button>
+        <a class="button secondary" asp-page="/Announcements/Index">Cancel</a>
+    </div>
+</form>

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using TemperedTyrant.CreatorToolkit.Core.Announcements;
 using TemperedTyrant.CreatorToolkit.Core.Audit;
 using TemperedTyrant.CreatorToolkit.Core.Diagnostics;
 using TemperedTyrant.CreatorToolkit.Core.Identity;
@@ -26,6 +27,8 @@ public sealed class CreatorToolkitDbContext
     public DbSet<SecurityCapability> SecurityCapabilities => Set<SecurityCapability>();
 
     public DbSet<AuditRecord> AuditRecords => Set<AuditRecord>();
+
+    public DbSet<Announcement> Announcements => Set<Announcement>();
 
     public DbSet<DiagnosticRecord> DiagnosticRecords => Set<DiagnosticRecord>();
 
@@ -59,6 +62,7 @@ public sealed class CreatorToolkitDbContext
         ConfigureProtectedSecret(builder);
         ConfigureAuditRecord(builder);
         ConfigureDiagnosticRecord(builder);
+        ConfigureAnnouncement(builder);
     }
 
     private static void ConfigureIdentity(ModelBuilder builder)
@@ -363,6 +367,63 @@ public sealed class CreatorToolkitDbContext
         });
     }
 
+    private static void ConfigureAnnouncement(ModelBuilder builder)
+    {
+        builder.Entity<Announcement>(announcement =>
+        {
+            announcement.ToTable(
+                "Announcements",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_Announcements_Title_Length",
+                        """length(trim("Title")) BETWEEN 1 AND 200""");
+                    table.HasCheckConstraint(
+                        "CK_Announcements_Body_Length",
+                        """length("Body") BETWEEN 1 AND 10000""");
+                    table.HasCheckConstraint(
+                        "CK_Announcements_Status",
+                        "\"Status\" IN ('Draft', 'Archived')");
+                    table.HasCheckConstraint(
+                        "CK_Announcements_Timestamps",
+                        "\"UpdatedAtUtc\" >= \"CreatedAtUtc\"");
+                    table.HasCheckConstraint(
+                        "CK_Announcements_Revision",
+                        "\"Revision\" >= 1");
+                });
+            announcement.HasKey(value => value.Id);
+            announcement.Property(value => value.Id).ValueGeneratedNever();
+            announcement.Property(value => value.Title).HasMaxLength(200).IsRequired();
+            announcement.Property(value => value.Body).HasMaxLength(10_000).IsRequired();
+            announcement
+                .Property(value => value.Status)
+                .HasConversion<string>()
+                .HasMaxLength(16)
+                .IsRequired();
+            announcement
+                .Property(value => value.CreatedAtUtc)
+                .HasConversion(
+                    value => value.ToUnixTimeMilliseconds(),
+                    value => DateTimeOffset.FromUnixTimeMilliseconds(value))
+                .IsRequired();
+            announcement
+                .Property(value => value.UpdatedAtUtc)
+                .HasConversion(
+                    value => value.ToUnixTimeMilliseconds(),
+                    value => DateTimeOffset.FromUnixTimeMilliseconds(value))
+                .IsRequired();
+            announcement.Property(value => value.CreatedByUserId).IsRequired();
+            announcement.Property(value => value.UpdatedByUserId).IsRequired();
+            announcement.Property(value => value.Revision).IsConcurrencyToken();
+            announcement
+                .HasIndex(value => new { value.Status, value.UpdatedAtUtc })
+                .IsDescending(false, true);
+            announcement
+                .HasIndex(value => value.UpdatedAtUtc)
+                .IsDescending(true);
+        });
+    }
+
     private void RejectAuditMutation()
     {
         bool hasUnsupportedMutation = ChangeTracker
@@ -380,6 +441,11 @@ public sealed class CreatorToolkitDbContext
     {
         foreach (var entry in ChangeTracker.Entries().Where(entry => entry.State == EntityState.Modified))
         {
+            if (entry.Entity is Announcement)
+            {
+                continue;
+            }
+
             var revisionMetadata = entry.Metadata.FindProperty("Revision");
             if (revisionMetadata is null
                 || revisionMetadata.ClrType != typeof(long)

@@ -11,6 +11,7 @@ public sealed class DatabaseMigrationTests
     private static readonly string[] ExpectedApplicationTables =
     [
         "AuditRecords",
+        "Announcements",
         "DiagnosticRecords",
         "InstallationStates",
         "Ownerships",
@@ -22,7 +23,6 @@ public sealed class DatabaseMigrationTests
     private static readonly string[] DeferredTables =
     [
         "Actions",
-        "Announcements",
         "Deliveries",
         "Destinations",
         "EventSources",
@@ -32,7 +32,7 @@ public sealed class DatabaseMigrationTests
     ];
 
     [Fact]
-    public async Task InitialMigrationCreatesIdentityAndSecurityFoundationOnly()
+    public async Task CurrentMigrationsCreateFoundationAndAnnouncementSchemaOnly()
     {
         using TestDataDirectory data = new();
         await using ServiceProvider provider = TestServices.Create(data.Path);
@@ -92,6 +92,46 @@ public sealed class DatabaseMigrationTests
         Assert.Equal(1, state.Id);
         Assert.Null(state.InitializedAtUtc);
         Assert.Equal(0, state.Revision);
+    }
+
+    [Fact]
+    public async Task AddAnnouncementsMigratesPreviousCommittedSchemaWithoutChangingFoundationData()
+    {
+        using TestDataDirectory data = new();
+        await using ServiceProvider provider = TestServices.Create(data.Path);
+        IDbContextFactory<CreatorToolkitDbContext> contextFactory =
+            provider.GetRequiredService<IDbContextFactory<CreatorToolkitDbContext>>();
+
+        await using (CreatorToolkitDbContext previous =
+                     await contextFactory.CreateDbContextAsync())
+        {
+            await previous.Database.MigrateAsync(
+                "20260728192834_InitialIdentityAndSecurityFoundation");
+            await previous.Database.ExecuteSqlRawAsync(
+                """
+                INSERT INTO AuditRecords
+                    (Id, OccurredAtUtc, EventCode, Outcome)
+                VALUES
+                    ('b7499f71-a69f-441a-bc77-f7853b784782',
+                     '2026-08-01T00:00:00+00:00',
+                     'security.protected-operation',
+                     'succeeded');
+                """);
+            Assert.False(
+                await previous.Database
+                    .SqlQueryRaw<int>(
+                        "SELECT COUNT(*) AS Value FROM sqlite_master WHERE type = 'table' AND name = 'Announcements'")
+                    .AnyAsync(value => value > 0));
+        }
+
+        await using (CreatorToolkitDbContext current =
+                     await contextFactory.CreateDbContextAsync())
+        {
+            await current.Database.MigrateAsync();
+            Assert.Equal(1, await current.AuditRecords.CountAsync());
+            Assert.Equal(0, await current.Announcements.CountAsync());
+            Assert.False(current.Database.HasPendingModelChanges());
+        }
     }
 
     [Fact]

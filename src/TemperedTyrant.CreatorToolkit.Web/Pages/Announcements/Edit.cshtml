@@ -1,0 +1,35 @@
+@page "/Announcements/{id:guid}/Edit"
+@model TemperedTyrant.CreatorToolkit.Web.Pages.Announcements.EditModel
+@{
+    ViewData["Title"] = "Edit announcement";
+}
+<header class="page-heading">
+    <h1>Edit announcement</h1>
+    <p class="lede">Update this plain-text draft.</p>
+</header>
+@if (Model.HasConflict)
+{
+    <section class="notice" role="alert">
+        <p><a asp-page="/Announcements/Edit" asp-route-id="@Model.Id">Reload the current draft</a> in a new request. Copy any entered changes you want to keep first.</p>
+    </section>
+}
+<form method="post" class="card editor-form">
+    <input asp-for="Revision" type="hidden">
+    <div asp-validation-summary="ModelOnly"></div>
+    <div>
+        <label asp-for="Title"></label>
+        <input asp-for="Title" maxlength="400" autocomplete="off" aria-describedby="title-help">
+        <p id="title-help" class="field-help">Required. Maximum 200 Unicode characters.</p>
+        <span asp-validation-for="Title"></span>
+    </div>
+    <div>
+        <label asp-for="Body">Announcement content</label>
+        <textarea asp-for="Body" rows="16" maxlength="20000" aria-describedby="body-help"></textarea>
+        <p id="body-help" class="field-help">Required plain text. Maximum 10,000 Unicode characters.</p>
+        <span asp-validation-for="Body"></span>
+    </div>
+    <div class="actions">
+        <button type="submit">Save changes</button>
+        <a class="button secondary" asp-page="/Announcements/Details" asp-route-id="@Model.Id">Cancel</a>
+    </div>
+</form>
