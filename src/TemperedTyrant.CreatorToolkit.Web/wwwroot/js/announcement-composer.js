@@ -134,6 +134,21 @@
             fileInput.files = transfer.files;
             renderNewFiles();
         };
+        const createSafePreviewUrl = async file => {
+            const bitmap = await createImageBitmap(file);
+            try {
+                const canvas = document.createElement("canvas");
+                canvas.width = bitmap.width;
+                canvas.height = bitmap.height;
+                canvas.getContext("2d").drawImage(bitmap, 0, 0);
+                const previewBlob = await new Promise((resolve, reject) => {
+                    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Image preview unavailable.")), "image/png");
+                });
+                return URL.createObjectURL(previewBlob);
+            } finally {
+                bitmap.close();
+            }
+        };
         const renderNewFiles = () => {
             if (!fileInput || !newList) return;
             for (const url of objectUrls) URL.revokeObjectURL(url);
@@ -143,10 +158,17 @@
                 const card = document.createElement("article");
                 card.className = "media-card unsaved-media";
                 const preview = document.createElement("img");
-                const objectUrl = URL.createObjectURL(file);
-                objectUrls.add(objectUrl);
-                preview.src = objectUrl;
                 preview.alt = "Unsaved image preview";
+                createSafePreviewUrl(file).then(objectUrl => {
+                    if (!fileInput.files[index] || fileInput.files[index] !== file) {
+                        URL.revokeObjectURL(objectUrl);
+                        return;
+                    }
+                    objectUrls.add(objectUrl);
+                    preview.src = objectUrl;
+                }).catch(() => {
+                    preview.remove();
+                });
                 const fields = document.createElement("div");
                 fields.className = "media-card-fields";
                 const heading = document.createElement("strong");
