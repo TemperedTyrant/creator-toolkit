@@ -81,11 +81,16 @@ jobs:
           --no-restore
 
       - name: Install matching EF command-line tool
-        run: dotnet tool install --global dotnet-ef --version 10.0.10
+        run: >-
+          dotnet tool install
+          --tool-path "$RUNNER_TEMP/dotnet-tools"
+          dotnet-ef
+          --version 10.0.10
 
       - name: Verify EF model is current
         run: >-
-          dotnet ef migrations has-pending-model-changes
+          "$RUNNER_TEMP/dotnet-tools/dotnet-ef"
+          migrations has-pending-model-changes
           --project src/TemperedTyrant.CreatorToolkit.Infrastructure
           --startup-project src/TemperedTyrant.CreatorToolkit.Web
 
