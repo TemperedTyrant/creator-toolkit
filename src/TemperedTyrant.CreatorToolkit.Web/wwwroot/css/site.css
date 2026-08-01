@@ -211,7 +211,8 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
     width: min(34rem, 100%);
     min-height: 2.7rem;
     margin-top: 0.25rem;
@@ -221,6 +222,104 @@ select {
     background: var(--surface-raised);
     color: var(--text);
     font: inherit;
+}
+
+textarea {
+    resize: vertical;
+}
+
+.split-heading,
+.filter-form,
+.pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.filter-form {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--surface);
+}
+
+.filter-form > div {
+    flex: 1 1 16rem;
+}
+
+.filter-form label {
+    margin-top: 0;
+}
+
+.editor-form,
+.confirmation-form {
+    max-width: 54rem;
+}
+
+.editor-form input,
+.editor-form textarea {
+    width: 100%;
+}
+
+.field-help {
+    margin-block: 0.25rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.announcement-content {
+    margin-bottom: 1.25rem;
+}
+
+.announcement-body {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.announcement-metadata {
+    margin-block: 1.25rem;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.status-draft {
+    border-color: var(--accent);
+    color: var(--accent-strong);
+}
+
+.status-archived {
+    color: var(--muted);
+}
+
+.button.danger,
+button.danger {
+    border-color: var(--danger);
+    background: transparent;
+    color: var(--danger);
+}
+
+button.secondary {
+    background: transparent;
+    color: var(--accent-strong);
+}
+
+.danger-notice {
+    border-left-color: var(--danger);
+}
+
+.empty-state,
+.pagination {
+    margin-top: 1.25rem;
 }
 
 .validation-summary-errors,

@@ -1,0 +1,24 @@
+@page "/Announcements/{id:guid}/Delete"
+@model TemperedTyrant.CreatorToolkit.Web.Pages.Announcements.DeleteModel
+@{
+    ViewData["Title"] = "Delete announcement";
+}
+@if (Model.Item is not null)
+{
+    <header class="page-heading">
+        <h1>Delete announcement</h1>
+        <p class="lede">Permanently delete “@Model.Item.Title”?</p>
+    </header>
+    <section class="notice danger-notice">
+        <h2>This action cannot be undone</h2>
+        <p>The announcement draft will be permanently removed. Its safe audit event will remain.</p>
+    </section>
+    <form method="post" class="card confirmation-form">
+        <input asp-for="Revision" type="hidden">
+        <div asp-validation-summary="ModelOnly"></div>
+        <div class="actions">
+            <button class="danger" type="submit">Permanently delete</button>
+            <a class="button secondary" asp-page="/Announcements/Details" asp-route-id="@Model.Id">Cancel</a>
+        </div>
+    </form>
+}

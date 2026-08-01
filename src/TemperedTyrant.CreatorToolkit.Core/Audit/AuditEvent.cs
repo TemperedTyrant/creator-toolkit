@@ -30,6 +30,11 @@ public enum AuditEventCode
     OwnerRecoveryCapabilityCreated = 16,
     OwnerRecovered = 17,
     OwnershipTransferRejected = 18,
+    AnnouncementCreated = 19,
+    AnnouncementUpdated = 20,
+    AnnouncementArchived = 21,
+    AnnouncementRestored = 22,
+    AnnouncementDeleted = 23,
 }
 
 public enum AuditOutcome

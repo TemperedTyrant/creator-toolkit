@@ -1,0 +1,99 @@
+@page "/Announcements"
+@model TemperedTyrant.CreatorToolkit.Web.Pages.Announcements.IndexModel
+@using TemperedTyrant.CreatorToolkit.Core.Announcements
+@{
+    ViewData["Title"] = "Announcements";
+}
+<header class="page-heading split-heading">
+    <div>
+        <h1>Announcements</h1>
+        <p class="lede">Create and manage plain-text announcement drafts.</p>
+    </div>
+    @if (Model.CanEdit)
+    {
+        <a class="button" asp-page="/Announcements/New">Create announcement</a>
+    }
+</header>
+@if (Model.StatusMessage is not null)
+{
+    <section class="notice" role="status">
+        <p>@Model.StatusMessage</p>
+    </section>
+}
+<form method="get" class="filter-form" aria-label="Filter announcements">
+    <div>
+        <label asp-for="Search">Search title and content</label>
+        <input asp-for="Search" maxlength="400" autocomplete="off">
+    </div>
+    <div>
+        <label asp-for="Status">Status</label>
+        <select asp-for="Status">
+            <option value="Draft">Draft</option>
+            <option value="Archived">Archived</option>
+            <option value="All">All</option>
+        </select>
+    </div>
+    <button type="submit">Apply filters</button>
+</form>
+@if (Model.Results.Items.Count == 0)
+{
+    <section class="notice empty-state">
+        <h2>No announcements found</h2>
+        <p>Adjust the filters or create a draft when you are ready.</p>
+    </section>
+}
+else
+{
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">Title</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Updated</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (AnnouncementSummary item in Model.Results.Items)
+                {
+                    <tr>
+                        <td><a asp-page="/Announcements/Details" asp-route-id="@item.Id">@item.Title</a></td>
+                        <td><span class="status-badge status-@item.Status.ToString().ToLowerInvariant()">@item.Status</span></td>
+                        <td><time datetime="@item.UpdatedAtUtc.ToString("O")">@item.UpdatedAtUtc.ToString("u")</time></td>
+                        <td>
+                            <a asp-page="/Announcements/Details" asp-route-id="@item.Id">View</a>
+                            @if (Model.CanEdit && item.Status == AnnouncementStatus.Draft)
+                            {
+                                <span aria-hidden="true"> · </span>
+                                <a asp-page="/Announcements/Edit" asp-route-id="@item.Id">Edit</a>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (Model.Results.TotalPages > 1)
+    {
+        <nav class="pagination" aria-label="Announcement pages">
+            @if (Model.Results.Page > 1)
+            {
+                <a class="button secondary"
+                   asp-page="/Announcements/Index"
+                   asp-route-search="@Model.Results.Search"
+                   asp-route-status="@Model.Results.Status"
+                   asp-route-pageNumber="@(Model.Results.Page - 1)">Previous</a>
+            }
+            <span>Page @Model.Results.Page of @Model.Results.TotalPages</span>
+            @if (Model.Results.Page < Model.Results.TotalPages)
+            {
+                <a class="button secondary"
+                   asp-page="/Announcements/Index"
+                   asp-route-search="@Model.Results.Search"
+                   asp-route-status="@Model.Results.Status"
+                   asp-route-pageNumber="@(Model.Results.Page + 1)">Next</a>
+            }
+        </nav>
+    }
+}

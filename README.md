@@ -10,11 +10,14 @@ machine-readable identifier remains `creator-toolkit`.
 
 > [!WARNING]
 > TemperedTyrant Creator Toolkit is in pre-alpha development.
-> Milestone 1 application-foundation work has begun, but no usable application
-> release is available yet.
+> The milestone 1 foundation and announcement draft authoring are implemented,
+> but no stable release is available yet and external publishing is not
+> implemented.
 
-Creator Announcements is the first module that will be implemented and
-released. Version 1 remains deliberately focused on reliable creator
+Creator Announcements is the first module being implemented and released.
+Authorized users can now create, edit, archive, restore, search, and delete
+plain-text drafts; Viewer users have read-only access. Version 1 remains
+deliberately focused on reliable creator
 announcements; it is not a general-purpose creator suite or an enterprise
 social-media management, analytics, engagement, or advertising product.
 

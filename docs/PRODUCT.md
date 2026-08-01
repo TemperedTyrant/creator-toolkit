@@ -2,10 +2,11 @@
 
 ## Status
 
-TemperedTyrant Creator Toolkit is in pre-alpha application-foundation
-development. Local Identity, account lifecycle, the authenticated application
-shell, and sanitized diagnostics are implemented. Announcement, provider,
-publishing, scheduling, and durable-job behavior remains unimplemented.
+TemperedTyrant Creator Toolkit is in pre-alpha development. The milestone 1
+foundation and plain-text announcement draft authoring are implemented. Owners,
+Admins, and Editors can create, edit, archive, restore, search, and permanently
+delete drafts; Viewers have read-only access. Destinations, external publishing,
+scheduling, creator events, and durable publishing jobs remain unimplemented.
 
 **Self-hosted tools and automation for creators and their teams.**
 
@@ -110,35 +111,54 @@ until those areas are implemented.
 
 ### Editor
 
-An Editor creates and edits drafts, previews rendered posts, and submits or
-publishes announcements according to the workspace approval policy. An Editor
-cannot administer integrations or approve their own work.
+An Editor can create, edit, archive, restore, search, and delete announcement
+drafts. Publishing, rendered provider previews, integrations, and approval
+workflows are not implemented.
 
 ### Viewer
 
-A Viewer has read-only access to announcements, publishing history, connection
-status, and user-safe errors. A Viewer cannot access technical Debug data.
+A Viewer has read-only access to announcements and user-safe errors. A Viewer
+cannot mutate announcements or access technical Debug data. Publishing history
+and connection status are not implemented.
 
 All permissions are enforced on the server. Interface visibility is not an
 authorization boundary.
+
+## Implemented announcement authoring
+
+Announcements are plain-text drafts with a required title of at most 200
+Unicode scalar values and a required body of at most 10,000 Unicode scalar
+values. Body paragraphs and line breaks are preserved and displayed as encoded
+text; announcement content is never interpreted as HTML.
+
+New announcements start as Draft. Archived announcements are read-only until
+restored. Permanent deletion requires a dedicated confirmation page. Each edit,
+archive, restore, and delete operation is bound to the revision the user read;
+when another mutation wins first, the stale operation is rejected instead of
+overwriting current state. Successful mutations create transactional audit
+records containing safe identifiers and operation metadata, never title or body
+content.
+
+The announcement list supports bounded pagination, status filtering, and
+search over title and body. External publishing, destinations, schedules,
+provider rendering, approvals, and delivery history are not implemented.
 
 ## Key user journeys
 
 ### First run
 
-1. The operator starts the future Compose deployment.
-2. The uninitialized application remains locked.
+1. The operator starts the supplied Compose deployment.
+2. The uninitialized application is ready to serve Setup but normal application
+   access remains locked.
 3. The operator invokes an explicit administrative CLI command to generate a
    cryptographically random, 30-minute bootstrap credential.
 4. The command prints the credential only to its terminal.
 5. The operator uses it once to create the initial Owner.
 6. The bootstrap endpoint is permanently disabled for that installation.
-7. The wizard guides the Owner through workspace time zone, public URL guidance,
-   and an initial destination.
+7. The Owner signs in and can manage local users and announcement drafts.
 
-The public URL is optional for local manual, scheduled, Discord, Bluesky, and
-generic outgoing-webhook publishing. The wizard explains when an inbound
-provider callback requires a reachable public HTTPS URL.
+A public URL is optional for the implemented local application. Destination
+setup, provider callbacks, scheduling, and external publishing are future work.
 
 ### Add a local user
 
@@ -151,6 +171,8 @@ one. No email service or public registration is involved.
 
 ### Connect a destination
 
+This journey is planned and is not implemented.
+
 An Owner or Admin chooses a provider, enters its credentials, and runs a
 connection test. The interface reports Healthy, Degraded, Reconnect required,
 Misconfigured, or Unknown, with a recommended next action and a diagnostic
@@ -162,6 +184,10 @@ installation.
 
 ### Prepare and publish an announcement
 
+Draft authoring is implemented. Templates, destination variants, provider
+previews, scheduling, approval, and publishing in the remainder of this journey
+are planned and are not implemented.
+
 An authorized user chooses a template or begins a draft, reviews the default
 message and any destination override, and previews the actual provider-specific
 rendering before publishing or scheduling.
@@ -171,6 +197,8 @@ does not prevent another from succeeding. Retryable failures are retried
 durably; permanent or exhausted failures show an actionable next step.
 
 ### Approval
+
+This workflow is planned and is not implemented.
 
 The workspace has one Editor publishing policy:
 

@@ -110,6 +110,14 @@ permissions and ownership by container UID `1654`, and then start the applicatio
 and verify health and sign-in. Test backups by restoring them to an isolated,
 disposable installation.
 
+Announcement drafts are stored in the same SQLite database, so they are
+included only when that database and the Data Protection key ring are backed up
+and restored together. On upgrade, normal application startup applies the
+reviewed announcement-schema migration before readiness succeeds. Stop the
+application and take a coordinated backup before upgrading; do not live-copy
+individual SQLite files. The migration adds the announcement table and indexes
+without modifying Identity, audit, diagnostics, or protected-secret data.
+
 ## Configuration
 
 `.env.example` contains safe defaults and commented placeholders. Copy it to the

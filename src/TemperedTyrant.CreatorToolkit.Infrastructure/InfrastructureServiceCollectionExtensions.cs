@@ -5,9 +5,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using TemperedTyrant.CreatorToolkit.Core.Announcements;
 using TemperedTyrant.CreatorToolkit.Core.Audit;
 using TemperedTyrant.CreatorToolkit.Core.Diagnostics;
 using TemperedTyrant.CreatorToolkit.Core.Security;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Announcements;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Audit;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Diagnostics;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Health;
@@ -106,6 +108,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<PersistenceInitializer>();
         services.AddSingleton<IInfrastructureReadinessProbe, InfrastructureReadinessProbe>();
         services.AddScoped<IAuditWriter, TransactionalAuditWriter>();
+        services.AddScoped<IAnnouncementService, AnnouncementService>();
         services.AddSingleton<
             IDiagnosticReferenceGenerator,
             CryptographicDiagnosticReferenceGenerator>();
