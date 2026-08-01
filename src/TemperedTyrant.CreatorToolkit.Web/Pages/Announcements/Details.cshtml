@@ -34,6 +34,7 @@
         <div class="actions">
             @if (Model.Item.Status == AnnouncementStatus.Draft)
             {
+                <a class="button" asp-page="/Announcements/PublishDiscord" asp-route-id="@Model.Item.Id">Publish to Discord</a>
                 <a class="button" asp-page="/Announcements/Edit" asp-route-id="@Model.Item.Id">Edit draft</a>
                 <form method="post" asp-page="/Announcements/Archive" asp-route-id="@Model.Item.Id">
                     <input type="hidden" name="Revision" value="@Model.Item.Revision">

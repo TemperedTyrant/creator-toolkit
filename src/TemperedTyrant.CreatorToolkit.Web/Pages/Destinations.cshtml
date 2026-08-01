@@ -5,9 +5,46 @@
 }
 <header class="page-heading">
     <h1>Destinations</h1>
-    <p class="lede">Publishing destinations will eventually be configured and reviewed here.</p>
+    <p class="lede">Connect a dedicated Discord bot and save channels for foreground manual publishing.</p>
 </header>
+@if (Model.CanManage)
+{
+    <div class="actions">
+        <a class="button" asp-page="/Destinations/Discord/New">Add Discord bot</a>
+    </div>
+}
 <section class="notice">
-    <h2>Not implemented</h2>
-    <p>Destination configuration and provider connections are not available in this pre-alpha version. No destinations or simulated connections exist.</p>
+    <p>Creator Toolkit uses a bot owned by you. It never asks for a Discord username, password, user token, or personal-account authorization.</p>
 </section>
+@if (Model.Connections.Count == 0)
+{
+    <section class="card"><h2>No Discord connections</h2><p>Add a dedicated, least-privilege bot to begin.</p></section>
+}
+else
+{
+    <div class="card-grid">
+    @foreach (var connection in Model.Connections)
+    {
+        <article class="card">
+            <h2>@connection.Name</h2>
+            <dl class="status-list">
+                <dt>Bot</dt><dd>@connection.BotUsername</dd>
+                <dt>State</dt><dd>@(connection.Enabled ? "Enabled" : "Disabled")</dd>
+                <dt>Saved channels</dt><dd>@connection.DestinationCount</dd>
+            </dl>
+            <div class="actions">
+                <a class="button secondary" asp-page="/Destinations/Discord/Details" asp-route-id="@connection.Id">View connection</a>
+                @if (Model.CanManage)
+                {
+                    <form method="post" asp-page-handler="Enable">
+                        <input type="hidden" name="id" value="@connection.Id">
+                        <input type="hidden" name="revision" value="@connection.Revision">
+                        <input type="hidden" name="enabled" value="@((!connection.Enabled).ToString().ToLowerInvariant())">
+                        <button class="secondary" type="submit">@(connection.Enabled ? "Disable" : "Enable")</button>
+                    </form>
+                }
+            </div>
+        </article>
+    }
+    </div>
+}

@@ -2,8 +2,10 @@
 
 ## Status and goals
 
-This document describes the intended version 1 architecture. No application is
-implemented yet.
+This document describes the intended version 1 architecture. The application
+foundation, announcement draft authoring, and foreground Discord bot HTTP
+publishing are implemented. Durable publishing jobs, schedules, event sources,
+and other providers remain future work.
 
 TemperedTyrant Creator Toolkit will be a modular monolith built with .NET 10 LTS,
 ASP.NET Core Razor Pages, ASP.NET Core Identity, Entity Framework Core, SQLite,

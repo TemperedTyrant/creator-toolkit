@@ -6,6 +6,7 @@ using TemperedTyrant.CreatorToolkit.Core.Audit;
 using TemperedTyrant.CreatorToolkit.Core.Diagnostics;
 using TemperedTyrant.CreatorToolkit.Core.Identity;
 using TemperedTyrant.CreatorToolkit.Core.Setup;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Discord;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
 
 namespace TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
@@ -29,6 +30,10 @@ public sealed class CreatorToolkitDbContext
     public DbSet<AuditRecord> AuditRecords => Set<AuditRecord>();
 
     public DbSet<Announcement> Announcements => Set<Announcement>();
+
+    public DbSet<DiscordConnection> DiscordConnections => Set<DiscordConnection>();
+
+    public DbSet<DiscordDestination> DiscordDestinations => Set<DiscordDestination>();
 
     public DbSet<DiagnosticRecord> DiagnosticRecords => Set<DiagnosticRecord>();
 
@@ -63,6 +68,7 @@ public sealed class CreatorToolkitDbContext
         ConfigureAuditRecord(builder);
         ConfigureDiagnosticRecord(builder);
         ConfigureAnnouncement(builder);
+        ConfigureDiscord(builder);
     }
 
     private static void ConfigureIdentity(ModelBuilder builder)
@@ -424,6 +430,103 @@ public sealed class CreatorToolkitDbContext
         });
     }
 
+    private static void ConfigureDiscord(ModelBuilder builder)
+    {
+        builder.Entity<DiscordConnection>(connection =>
+        {
+            connection.ToTable(
+                "DiscordConnections",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_DiscordConnections_Name_Length",
+                        "length(trim(\"Name\")) BETWEEN 1 AND 100");
+                    table.HasCheckConstraint(
+                        "CK_DiscordConnections_ApplicationId",
+                        "length(\"ApplicationId\") BETWEEN 1 AND 20 AND \"ApplicationId\" NOT GLOB '*[^0-9]*'");
+                    table.HasCheckConstraint(
+                        "CK_DiscordConnections_BotUserId",
+                        "length(\"BotUserId\") BETWEEN 1 AND 20 AND \"BotUserId\" NOT GLOB '*[^0-9]*'");
+                    table.HasCheckConstraint(
+                        "CK_DiscordConnections_BotUsername_Length",
+                        "length(\"BotUsernameSnapshot\") BETWEEN 1 AND 100");
+                    table.HasCheckConstraint(
+                        "CK_DiscordConnections_Timestamps",
+                        "\"UpdatedAtUtc\" >= \"CreatedAtUtc\"");
+                    table.HasCheckConstraint(
+                        "CK_DiscordConnections_Revision",
+                        "\"Revision\" >= 1");
+                });
+            connection.HasKey(value => value.Id);
+            connection.Property(value => value.Id).ValueGeneratedNever();
+            connection.Property(value => value.Name).HasMaxLength(100).IsRequired();
+            connection.Property(value => value.ApplicationId).HasMaxLength(20).IsRequired();
+            connection.Property(value => value.BotUserId).HasMaxLength(20).IsRequired();
+            connection.Property(value => value.BotUsernameSnapshot).HasMaxLength(100).IsRequired();
+            connection.Property(value => value.Revision).IsConcurrencyToken();
+            ConfigureUnixTimestamp(connection.Property(value => value.CreatedAtUtc));
+            ConfigureUnixTimestamp(connection.Property(value => value.UpdatedAtUtc));
+            connection.HasIndex(value => value.Name);
+            connection.HasIndex(value => value.ProtectedSecretId).IsUnique();
+        });
+
+        builder.Entity<DiscordDestination>(destination =>
+        {
+            destination.ToTable(
+                "DiscordDestinations",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_DiscordDestinations_GuildId",
+                        "length(\"GuildId\") BETWEEN 1 AND 20 AND \"GuildId\" NOT GLOB '*[^0-9]*'");
+                    table.HasCheckConstraint(
+                        "CK_DiscordDestinations_ChannelId",
+                        "length(\"ChannelId\") BETWEEN 1 AND 20 AND \"ChannelId\" NOT GLOB '*[^0-9]*'");
+                    table.HasCheckConstraint(
+                        "CK_DiscordDestinations_GuildName_Length",
+                        "length(\"GuildNameSnapshot\") BETWEEN 1 AND 100");
+                    table.HasCheckConstraint(
+                        "CK_DiscordDestinations_ChannelName_Length",
+                        "length(\"ChannelNameSnapshot\") BETWEEN 1 AND 100");
+                    table.HasCheckConstraint(
+                        "CK_DiscordDestinations_ChannelType",
+                        "\"ChannelType\" IN (0, 5)");
+                    table.HasCheckConstraint(
+                        "CK_DiscordDestinations_Timestamps",
+                        "\"UpdatedAtUtc\" >= \"CreatedAtUtc\"");
+                    table.HasCheckConstraint(
+                        "CK_DiscordDestinations_Revision",
+                        "\"Revision\" >= 1");
+                });
+            destination.HasKey(value => value.Id);
+            destination.Property(value => value.Id).ValueGeneratedNever();
+            destination.Property(value => value.GuildId).HasMaxLength(20).IsRequired();
+            destination.Property(value => value.GuildNameSnapshot).HasMaxLength(100).IsRequired();
+            destination.Property(value => value.ChannelId).HasMaxLength(20).IsRequired();
+            destination.Property(value => value.ChannelNameSnapshot).HasMaxLength(100).IsRequired();
+            destination.Property(value => value.Revision).IsConcurrencyToken();
+            ConfigureUnixTimestamp(destination.Property(value => value.CreatedAtUtc));
+            ConfigureUnixTimestamp(destination.Property(value => value.UpdatedAtUtc));
+            destination.HasIndex(value => new { value.DiscordConnectionId, value.ChannelId }).IsUnique();
+            destination.HasIndex(value => new { value.DiscordConnectionId, value.GuildId, value.Enabled });
+            destination
+                .HasOne(value => value.Connection)
+                .WithMany(value => value.Destinations)
+                .HasForeignKey(value => value.DiscordConnectionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static void ConfigureUnixTimestamp(
+        Microsoft.EntityFrameworkCore.Metadata.Builders.PropertyBuilder<DateTimeOffset> property)
+    {
+        property
+            .HasConversion(
+                value => value.ToUnixTimeMilliseconds(),
+                value => DateTimeOffset.FromUnixTimeMilliseconds(value))
+            .IsRequired();
+    }
+
     private void RejectAuditMutation()
     {
         bool hasUnsupportedMutation = ChangeTracker
@@ -441,7 +544,7 @@ public sealed class CreatorToolkitDbContext
     {
         foreach (var entry in ChangeTracker.Entries().Where(entry => entry.State == EntityState.Modified))
         {
-            if (entry.Entity is Announcement)
+            if (entry.Entity is Announcement or DiscordConnection or DiscordDestination)
             {
                 continue;
             }

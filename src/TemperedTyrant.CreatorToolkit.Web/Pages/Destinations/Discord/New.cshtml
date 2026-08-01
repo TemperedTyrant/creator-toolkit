@@ -1,0 +1,26 @@
+@page "/Destinations/Discord/New"
+@model TemperedTyrant.CreatorToolkit.Web.Pages.Destinations.Discord.NewModel
+@{
+    ViewData["Title"] = "Add Discord bot";
+}
+<header class="page-heading">
+    <h1>Add Discord bot</h1>
+    <p class="lede">Create a dedicated application and bot in the Discord Developer Portal, then enter its bot token here.</p>
+</header>
+<section class="notice">
+    <p>Use a dedicated Creator Toolkit bot with minimum permissions. Never enter a Discord username, password, user token, or another person's credential.</p>
+</section>
+<form method="post" autocomplete="off">
+    <div asp-validation-summary="ModelOnly" class="validation-summary" role="alert"></div>
+    <label asp-for="Name">Connection name</label>
+    <input asp-for="Name" maxlength="100" autocomplete="off">
+    <span asp-validation-for="Name" class="field-validation-error"></span>
+    <label asp-for="BotToken">Bot token</label>
+    <input asp-for="BotToken" type="password" value="" autocomplete="new-password" spellcheck="false">
+    <span asp-validation-for="BotToken" class="field-validation-error"></span>
+    <p class="muted">The token is validated with Discord and encrypted before storage. It can only be replaced, never revealed.</p>
+    <div class="actions">
+        <button type="submit">Validate and save</button>
+        <a class="button secondary" asp-page="/Destinations">Cancel</a>
+    </div>
+</form>

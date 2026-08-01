@@ -135,6 +135,11 @@ The Compose file fixes the in-container data directory and port to `/app/data`
 and `8080`. Provider credentials, bootstrap capabilities, recovery capabilities,
 and other secrets do not belong in `.env` or Compose configuration.
 
+Discord bot tokens are entered only through the authenticated Destinations UI
+and are encrypted using the Data Protection keys in this same volume. Back up
+and restore the database and key ring together or configured Discord
+connections may become unusable. See [Discord setup](DISCORD.md).
+
 ## Reverse-proxy boundary
 
 The supplied Compose file intentionally does not run a reverse proxy and does

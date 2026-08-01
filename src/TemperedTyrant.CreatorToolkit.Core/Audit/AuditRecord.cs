@@ -61,6 +61,21 @@ public sealed class AuditRecord
                 AuditEventCode.AnnouncementArchived => "announcement.archived",
                 AuditEventCode.AnnouncementRestored => "announcement.restored",
                 AuditEventCode.AnnouncementDeleted => "announcement.deleted",
+                AuditEventCode.DiscordConnectionCreated => "discord.connection-created",
+                AuditEventCode.DiscordTokenReplaced => "discord.token-replaced",
+                AuditEventCode.DiscordConnectionEnabled => "discord.connection-enabled",
+                AuditEventCode.DiscordConnectionDisabled => "discord.connection-disabled",
+                AuditEventCode.DiscordConnectionDeleted => "discord.connection-deleted",
+                AuditEventCode.DiscordDestinationAdded => "discord.destination-added",
+                AuditEventCode.DiscordDestinationEnabled => "discord.destination-enabled",
+                AuditEventCode.DiscordDestinationDisabled => "discord.destination-disabled",
+                AuditEventCode.DiscordDestinationDeleted => "discord.destination-deleted",
+                AuditEventCode.DiscordDestinationTestSent => "discord.destination-test-sent",
+                AuditEventCode.DiscordPublicationRequested => "discord.publication-requested",
+                AuditEventCode.DiscordPublicationChannelSucceeded =>
+                    "discord.publication-channel-succeeded",
+                AuditEventCode.DiscordPublicationChannelFailed =>
+                    "discord.publication-channel-failed",
                 _ => throw new ArgumentOutOfRangeException(
                     nameof(auditEvent),
                     "The audit event code is not supported."),

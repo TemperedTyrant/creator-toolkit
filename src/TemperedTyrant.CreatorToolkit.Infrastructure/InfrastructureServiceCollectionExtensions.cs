@@ -12,6 +12,7 @@ using TemperedTyrant.CreatorToolkit.Core.Security;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Announcements;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Audit;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Diagnostics;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Discord;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Health;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
@@ -109,12 +110,38 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IInfrastructureReadinessProbe, InfrastructureReadinessProbe>();
         services.AddScoped<IAuditWriter, TransactionalAuditWriter>();
         services.AddScoped<IAnnouncementService, AnnouncementService>();
+        services.AddHttpClient<DiscordHttpApi>(
+                client =>
+                {
+                    client.BaseAddress = DiscordHttpApi.ApiBaseAddress;
+                    client.Timeout = TimeSpan.FromSeconds(10);
+                    client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                        "DiscordBot (https://github.com/TemperedTyrant/creator-toolkit, 0.1)");
+                })
+            .ConfigurePrimaryHttpMessageHandler(
+                () => new SocketsHttpHandler
+                {
+                    AllowAutoRedirect = false,
+                    UseCookies = false,
+                    UseProxy = false,
+                    ConnectTimeout = TimeSpan.FromSeconds(3),
+                    PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+                    PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+                    MaxConnectionsPerServer = 8,
+                    MaxResponseHeadersLength = 32,
+                });
+        services.AddScoped<IDiscordApi>(
+            provider => provider.GetRequiredService<DiscordHttpApi>());
+        services.AddSingleton(DiscordPublishingOptions.Default);
+        services.AddScoped<IDiscordConfigurationService, DiscordConfigurationService>();
+        services.AddScoped<IDiscordPublishingService, DiscordPublishingService>();
         services.AddSingleton<
             IDiagnosticReferenceGenerator,
             CryptographicDiagnosticReferenceGenerator>();
         services.AddScoped<DiagnosticPersistence>();
         services.AddSingleton<IDiagnosticRecorder, BestEffortDiagnosticRecorder>();
         services.AddScoped<ISecretStore, DataProtectionSecretStore>();
+        services.AddScoped<IProtectedSecretValueResolver, ProtectedSecretValueResolver>();
         services.AddScoped<BootstrapCapabilityIssuer>();
         services.AddScoped<InitialOwnerSetupService>();
         services.AddScoped<UserLifecycleService>();

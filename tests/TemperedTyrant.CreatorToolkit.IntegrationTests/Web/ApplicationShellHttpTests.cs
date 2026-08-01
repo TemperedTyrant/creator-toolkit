@@ -320,7 +320,13 @@ public sealed partial class ApplicationShellHttpTests
         Assert.Contains("Create announcement", announcementsHtml, StringComparison.Ordinal);
         Assert.DoesNotContain("Not implemented", announcementsHtml, StringComparison.Ordinal);
 
-        foreach (string route in ProductRoutes.Skip(2))
+        HttpResponseMessage destinations = await client.GetAsync("/Destinations");
+        string destinationsHtml = await destinations.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, destinations.StatusCode);
+        Assert.Contains("Add Discord bot", destinationsHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Not implemented", destinationsHtml, StringComparison.Ordinal);
+
+        foreach (string route in ProductRoutes.Skip(3))
         {
             HttpResponseMessage response = await client.GetAsync(route);
             string html = await response.Content.ReadAsStringAsync();

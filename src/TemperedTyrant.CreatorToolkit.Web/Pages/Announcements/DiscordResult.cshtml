@@ -1,0 +1,16 @@
+@page "/Announcements/{id:guid}/DiscordResult/{submissionId:guid}"
+@model TemperedTyrant.CreatorToolkit.Web.Pages.Announcements.DiscordResultModel
+@{
+    ViewData["Title"] = "Discord publication results";
+}
+@if (Model.Result is not null)
+{
+    <header class="page-heading"><h1>Discord publication results</h1><p class="lede">One safe result is shown for each selected channel.</p></header>
+    <div class="card-grid">
+    @foreach (var channel in Model.Result.Channels)
+    {
+        <article class="card"><h2>@channel.GuildName · #@channel.ChannelName</h2><dl class="status-list"><dt>Result</dt><dd>@channel.Status</dd>@if (channel.DiscordMessageId is not null){<dt>Discord message ID</dt><dd>@channel.DiscordMessageId</dd>}<dt>Next step</dt><dd>@channel.CorrectiveAction</dd></dl></article>
+    }
+    </div>
+    <div class="actions"><a class="button" asp-page="/Announcements/Details" asp-route-id="@Model.Id">Return to announcement</a></div>
+}

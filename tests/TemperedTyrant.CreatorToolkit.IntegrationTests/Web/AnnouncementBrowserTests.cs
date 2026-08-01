@@ -14,7 +14,7 @@ using TemperedTyrant.CreatorToolkit.IntegrationTests.TestSupport;
 
 namespace TemperedTyrant.CreatorToolkit.IntegrationTests.Web;
 
-public sealed class AnnouncementBrowserTests
+public sealed partial class AnnouncementBrowserTests
 {
     private const string OwnerPassword = "mild river orbit velvet canyon";
     private const string ViewerPassword = "silver meadow lantern compass";

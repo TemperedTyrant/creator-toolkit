@@ -13,6 +13,8 @@ public sealed class DatabaseMigrationTests
         "AuditRecords",
         "Announcements",
         "DiagnosticRecords",
+        "DiscordConnections",
+        "DiscordDestinations",
         "InstallationStates",
         "Ownerships",
         "ProtectedSecrets",
@@ -130,6 +132,40 @@ public sealed class DatabaseMigrationTests
             await current.Database.MigrateAsync();
             Assert.Equal(1, await current.AuditRecords.CountAsync());
             Assert.Equal(0, await current.Announcements.CountAsync());
+            Assert.False(current.Database.HasPendingModelChanges());
+        }
+    }
+
+    [Fact]
+    public async Task AddDiscordDestinationsMigratesAnnouncementSchemaWithoutChangingExistingData()
+    {
+        using TestDataDirectory data = new();
+        await using ServiceProvider provider = TestServices.Create(data.Path);
+        IDbContextFactory<CreatorToolkitDbContext> contextFactory =
+            provider.GetRequiredService<IDbContextFactory<CreatorToolkitDbContext>>();
+
+        await using (CreatorToolkitDbContext previous = await contextFactory.CreateDbContextAsync())
+        {
+            await previous.Database.MigrateAsync("20260801022136_AddAnnouncements");
+            await previous.Database.ExecuteSqlRawAsync(
+                """
+                INSERT INTO Announcements
+                    (Id, Title, Body, Status, CreatedAtUtc, UpdatedAtUtc,
+                     CreatedByUserId, UpdatedByUserId, Revision)
+                VALUES
+                    ('2171a115-93cd-4dfd-b8a1-1c80426a8df6', 'Existing', 'Existing body', 'Draft',
+                     1785542400000, 1785542400000,
+                     'b31a6b8d-e6f8-4e3d-994c-5d876789d080',
+                     'b31a6b8d-e6f8-4e3d-994c-5d876789d080', 1);
+                """);
+        }
+
+        await using (CreatorToolkitDbContext current = await contextFactory.CreateDbContextAsync())
+        {
+            await current.Database.MigrateAsync();
+            Assert.Equal(1, await current.Announcements.CountAsync());
+            Assert.Empty(await current.DiscordConnections.ToListAsync());
+            Assert.Empty(await current.DiscordDestinations.ToListAsync());
             Assert.False(current.Database.HasPendingModelChanges());
         }
     }

@@ -3,10 +3,13 @@
 ## Status
 
 TemperedTyrant Creator Toolkit is in pre-alpha development. The milestone 1
-foundation and plain-text announcement draft authoring are implemented. Owners,
+foundation, plain-text announcement draft authoring, and foreground Discord bot
+publishing are implemented. Owners,
 Admins, and Editors can create, edit, archive, restore, search, and permanently
-delete drafts; Viewers have read-only access. Destinations, external publishing,
-scheduling, creator events, and durable publishing jobs remain unimplemented.
+delete drafts; Viewers have read-only access. Owners and Admins manage Discord
+bot connections and channel destinations, and Editors may also send Drafts.
+Scheduling, creator events, durable publishing jobs, and other providers remain
+unimplemented.
 
 **Self-hosted tools and automation for creators and their teams.**
 
@@ -112,8 +115,10 @@ until those areas are implemented.
 ### Editor
 
 An Editor can create, edit, archive, restore, search, and delete announcement
-drafts. Publishing, rendered provider previews, integrations, and approval
-workflows are not implemented.
+drafts and may publish a reviewed Discord-specific message in the foreground.
+Editors cannot manage bot credentials or use mass mentions. Scheduling,
+durable publishing, other integrations, and approval workflows are not
+implemented.
 
 ### Viewer
 
@@ -140,8 +145,8 @@ records containing safe identifiers and operation metadata, never title or body
 content.
 
 The announcement list supports bounded pagination, status filtering, and
-search over title and body. External publishing, destinations, schedules,
-provider rendering, approvals, and delivery history are not implemented.
+search over title and body. Foreground Discord publishing is implemented;
+schedules, other providers, approvals, and delivery history are not.
 
 ## Key user journeys
 
@@ -169,14 +174,14 @@ creator shares the link out of band. The new user chooses their own password.
 An authorized manager may regenerate an unused link, which revokes the prior
 one. No email service or public registration is involved.
 
-### Connect a destination
+### Connect a Discord destination
 
-This journey is planned and is not implemented.
-
-An Owner or Admin chooses a provider, enters its credentials, and runs a
-connection test. The interface reports Healthy, Degraded, Reconnect required,
-Misconfigured, or Unknown, with a recommended next action and a diagnostic
-reference when needed. Stored credentials can be replaced but never retrieved.
+An Owner or Admin enters and validates the bot token for a dedicated Discord
+application. The token is encrypted, replacement-only, and never displayed.
+Creator Toolkit generates a least-privilege bot installation link, discovers
+servers available to the bot, calculates effective channel permissions, and
+saves selected text or announcement channels. Editors and Viewers cannot
+manage credentials.
 
 Bluesky must request a dedicated app password, never the user's normal account
 password. OAuth is a later enhancement, not a prerequisite for a local
@@ -184,17 +189,18 @@ installation.
 
 ### Prepare and publish an announcement
 
-Draft authoring is implemented. Templates, destination variants, provider
-previews, scheduling, approval, and publishing in the remainder of this journey
-are planned and are not implemented.
+Draft authoring and foreground Discord publication are implemented. The user
+chooses one server and up to ten saved channels, prepares a plain message or one
+rich embed, explicitly selects any permitted mentions, reviews the form, and
+sends immediately. Each channel shows a safe independent result.
 
 An authorized user chooses a template or begins a draft, reviews the default
 message and any destination override, and previews the actual provider-specific
 rendering before publishing or scheduling.
 
 Each destination produces its own delivery result. A failure on one destination
-does not prevent another from succeeding. Retryable failures are retried
-durably; permanent or exhausted failures show an actionable next step.
+does not prevent another from succeeding. Only one bounded foreground rate-
+limit retry is supported; durable retries and recovery remain unimplemented.
 
 ### Approval
 
@@ -233,7 +239,7 @@ are absent from all views, exports, audit records, and logs.
 
 Initial free destinations:
 
-- Discord incoming webhooks;
+- Discord bot HTTP publishing;
 - generic outgoing HTTPS webhooks;
 - Bluesky using a dedicated app password and supported AT Protocol posting.
 
