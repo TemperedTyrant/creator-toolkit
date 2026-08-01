@@ -1,0 +1,77 @@
+@page "/PublishHistory/{id:guid}"
+@model TemperedTyrant.CreatorToolkit.Web.Pages.PublishHistory.DetailsModel
+@using TemperedTyrant.CreatorToolkit.Core.Publications
+@{
+    ViewData["Title"] = "Publication details";
+}
+@if (Model.Details is not null)
+{
+    PublicationHistoryItem publication = Model.Details.Publication;
+    <header class="page-heading split-heading">
+        <div><h1>Publication details</h1><p class="lede">Durable @publication.Provider delivery status.</p></div>
+        <a asp-page="/PublishHistory">Back to history</a>
+    </header>
+    <div asp-validation-summary="All" class="validation-summary" role="alert"></div>
+    @if (Request.Query["notice"] == "cancelled")
+    {
+        <section class="notice" role="status"><p>Cancellation was requested. Completed Discord messages remain delivered.</p></section>
+    }
+    <section class="card">
+        <h2>Summary</h2>
+        <dl class="status-list">
+            <dt>Status</dt><dd>@publication.Status</dd>
+            <dt>Provider</dt><dd>@publication.Provider</dd>
+            <dt>Requested</dt><dd><time datetime="@publication.RequestedAtUtc.ToString("O")">@publication.RequestedAtUtc.ToString("u")</time></dd>
+            <dt>Source revision</dt><dd>@publication.AnnouncementRevision</dd>
+            <dt>Publication ID</dt><dd><code>@publication.Id</code></dd>
+            <dt>Results</dt><dd>@publication.SuccessfulDeliveryCount succeeded · @publication.FailedDeliveryCount failed · @publication.CancelledDeliveryCount cancelled</dd>
+        </dl>
+        @if (publication.AnnouncementId is not null)
+        {
+            <p><a asp-page="/Announcements/Details" asp-route-id="@publication.AnnouncementId">View source announcement</a></p>
+        }
+        else
+        {
+            <p class="muted">The source announcement was deleted after publication completed.</p>
+        }
+        @if (Model.CanCancel && !Publication.IsTerminal(publication.Status))
+        {
+            <form method="post" asp-page-handler="Cancel">
+                <input type="hidden" asp-for="Id"><input type="hidden" name="Revision" value="@publication.Revision">
+                <p>Cancellation prevents remaining sends. It cannot remove messages already accepted by Discord.</p>
+                <button class="danger" type="submit">Cancel remaining sends</button>
+            </form>
+        }
+    </section>
+    <section class="card">
+        <h2>Destinations</h2>
+        @foreach (PublicationDeliveryDetails delivery in Model.Details.Deliveries)
+        {
+            <article class="list-item">
+                <h3>@delivery.ServerName · #@delivery.ChannelName</h3>
+                <p><strong>@delivery.Status</strong> · @delivery.AttemptCount attempt(s)</p>
+                @if (delivery.SafeOutcome is not null)
+                {
+                    <p>Outcome: @delivery.SafeOutcome</p>
+                    <p class="muted">@Model.CorrectiveAction(delivery.SafeOutcome)</p>
+                }
+                @if (delivery.NextAttemptAtUtc is not null) { <p>Next retry: @delivery.NextAttemptAtUtc.Value.ToString("u")</p> }
+                @if (delivery.ExternalMessageId is not null) { <p>Discord message ID: <code>@delivery.ExternalMessageId</code></p> }
+                @if (delivery.Attempts.Count > 0)
+                {
+                    <details><summary>Attempt timeline</summary><ol>
+                    @foreach (PublicationAttemptDetails attempt in delivery.Attempts)
+                    {
+                        <li>
+                            Attempt @attempt.AttemptNumber: @attempt.SafeOutcome
+                            · started <time datetime="@attempt.StartedAtUtc.ToString("O")">@attempt.StartedAtUtc.ToString("u")</time>
+                            @if (attempt.RetryScheduledForUtc is not null) { <span>· retry @attempt.RetryScheduledForUtc.Value.ToString("u")</span> }
+                            @if (attempt.DiagnosticReference is not null) { <span>· reference <code>@attempt.DiagnosticReference</code></span> }
+                        </li>
+                    }
+                    </ol></details>
+                }
+            </article>
+        }
+    </section>
+}

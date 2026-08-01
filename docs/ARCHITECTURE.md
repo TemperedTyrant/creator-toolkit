@@ -3,9 +3,9 @@
 ## Status and goals
 
 This document describes the intended version 1 architecture. The application
-foundation, announcement draft authoring, and foreground Discord bot HTTP
-publishing are implemented. Durable publishing jobs, schedules, event sources,
-and other providers remain future work.
+foundation, announcement draft authoring, Discord bot HTTP publishing, and
+durable Discord publication processing are implemented. Schedules, event
+sources, approvals, and other providers remain future work.
 
 TemperedTyrant Creator Toolkit will be a modular monolith built with .NET 10 LTS,
 ASP.NET Core Razor Pages, ASP.NET Core Identity, Entity Framework Core, SQLite,
@@ -33,7 +33,7 @@ Browser / provider callback
   ├── Identity and authorization
   ├── Application/domain modules
   ├── Connector HTTP clients
-  └── Hosted durable-job runner
+  └── Hosted Discord publication worker
             |
             v
     SQLite + Data Protection keys
@@ -242,34 +242,35 @@ occurrences derive a deterministic identity from the schedule and intended
 local occurrence. A delivery has a stable identity for one announcement
 revision and destination.
 
-Each destination receives its own Delivery and PersistentJob. Publishing is
-never wrapped in a cross-destination transaction. One connector's exception,
-rate limit, invalid credential, or permanent failure cannot cancel or delay
-another connector's already-due work.
+Each manual Discord publication creates one durable delivery per destination.
+Publishing is never wrapped in a cross-destination transaction. One connector's
+exception, rate limit, invalid credential, or permanent failure cannot cancel
+or delay another connector's already-due work.
 
 Provider-side idempotency features should be used when officially supported,
 but the local delivery state and unique constraints remain authoritative.
 
-## Durable jobs and retries
+## Durable Discord publications and retries
 
-The hosted job runner reads due jobs from SQLite. Claiming a job uses an atomic
-conditional update with a random lease owner and expiry. A crashed process
+The hosted publication worker reads due destination deliveries from SQLite.
+Claiming a delivery uses an atomic conditional update with a random lease owner
+and expiry. A crashed process
 leaves an expired lease that a later runner may recover.
 
 For each execution:
 
-1. claim one due job;
-2. load immutable delivery inputs;
-3. verify the current authorization/workflow state still permits execution;
+1. claim one due delivery;
+2. decrypt its immutable reviewed publication snapshot;
+3. revalidate the Discord connection, destination, channel, and permissions;
 4. call only that destination connector with a bounded timeout;
-5. persist the attempt and resulting delivery/job state;
+5. persist the attempt and resulting delivery/publication state;
 6. release or complete the lease.
 
-Retryable failures use bounded exponential backoff with jitter and honor safe
-provider retry guidance. A maximum attempt count or maximum age moves the job
-to a terminal failed state. Permanent and reconnect-required failures do not
-retry automatically. An authorized manual retry creates a new auditable
-execution without erasing attempt history.
+Retryable failures use deterministic delays of 30 seconds, two minutes, and ten
+minutes, with four total attempts at most. Discord Retry-After guidance is used
+when valid and bounded to ten minutes. Authentication, permission, missing-
+destination, validation, corrupted-payload, and cancellation outcomes do not
+retry automatically. Manual replay is not implemented.
 
 These automatic retry rules apply to version 1 announcement deliveries, whose
 connector contracts classify retry safety. Future action categories must use
@@ -283,18 +284,19 @@ restart.
 
 ## In-process lifecycle foundation
 
-The current application host has two narrowly scoped framework `IHostedService`
-registrations: one owns the application-host lock lifetime and one coordinates
-only fixed in-memory lifecycle states: Starting, Running, Stopping, Stopped, and
-Failed. Lifecycle coordination starts after configuration validation, the
+The current application host has three narrowly scoped framework `IHostedService`
+registrations: one owns the application-host lock lifetime, one coordinates
+only fixed in-memory lifecycle states, and one processes durable Discord
+publications. Lifecycle coordination starts after configuration validation, the
 long-running application-host lock, migrations and database initialization, and
 Data Protection key-ring validation. Startup failure fails the host closed.
 
 The application-host lock is acquired before persistence initialization and is
 owned by a dedicated host-lifetime component. That component starts before the
 lifecycle coordinator and releases the lease in the hosted `StoppedAsync` phase,
-after all hosted-service `StopAsync` work. Host shutdown therefore does not
-complete until the lock lease has been disposed. Application disposal provides
+after the publication worker and all other hosted-service `StopAsync` work. Host
+shutdown therefore does not complete until the lock lease has been disposed.
+Application disposal provides
 the same release guarantee when startup fails before or during hosted-service
 startup.
 
@@ -304,9 +306,10 @@ finish first. The coordinator stops reporting that it accepts lifecycle work
 before shutdown completion begins. A timeout, cancellation, or shutdown failure
 leaves the in-memory state Failed rather than Running. Late completion cannot
 leave that terminal failure state or re-enable work, and late task faults are
-observed. The state is not persisted and does not implement jobs, scheduling,
-polling, retries, leases, or provider work. Health and readiness endpoints
-are anonymous HTTP entry points layered over this fixed state. Liveness writes a
+observed. The lifecycle coordinator state is not persisted and does not itself
+implement jobs, scheduling, polling, retries, leases, or provider work. Health
+and readiness endpoints are anonymous HTTP entry points layered over this fixed
+state. Liveness writes a
 constant response without resolving infrastructure probes. Readiness requires
 Running state with no stopping signal, a completed successful persistence
 startup, a fixed read-only SQLite probe, current migration metadata and EF

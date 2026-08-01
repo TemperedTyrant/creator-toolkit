@@ -12,6 +12,7 @@ using TemperedTyrant.CreatorToolkit.Infrastructure;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Discord;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Publications;
 using TemperedTyrant.CreatorToolkit.IntegrationTests.TestSupport;
 using TemperedTyrant.CreatorToolkit.Web.Authorization;
 using TemperedTyrant.CreatorToolkit.Web.Discord;
@@ -104,7 +105,7 @@ public sealed partial class AnnouncementBrowserTests
         await page.GetByRole(AriaRole.Button, new() { Name = "Load publishing options" }).ClickAsync();
         await page.Locator("input[name='DestinationIds']").First.CheckAsync();
         await page.Locator("input[name='Mode'][value='Embed']").CheckAsync();
-        await page.Locator("#EmbedMessageText").FillAsync("**Foreground browser send**");
+        await page.Locator("#EmbedMessageText").FillAsync("**Durable browser send**");
         await page.Locator("#EmbedTitle").FillAsync("Discord-specific title");
         await page.Locator("#EmbedDescription").FillAsync("Role and member selected explicitly.");
         await page.Locator("#EmbedTitleUrl").FillAsync("https://example.invalid/title");
@@ -147,7 +148,7 @@ public sealed partial class AnnouncementBrowserTests
         await page.GetByRole(AriaRole.Button, new() { Name = "Search up to 25 members" }).ClickAsync();
         Assert.True((await memberSearchResponse).Ok);
         Assert.Equal(composerUrl, page.Url);
-        Assert.Equal("**Foreground browser send**", await page.Locator("#EmbedMessageText").InputValueAsync());
+        Assert.Equal("**Durable browser send**", await page.Locator("#EmbedMessageText").InputValueAsync());
         Assert.Equal("Discord-specific title", await page.Locator("#EmbedTitle").InputValueAsync());
         Assert.Equal("Role and member selected explicitly.", await page.Locator("#EmbedDescription").InputValueAsync());
         Assert.Equal("https://example.invalid/title", await page.Locator("#EmbedTitleUrl").InputValueAsync());
@@ -178,9 +179,14 @@ public sealed partial class AnnouncementBrowserTests
         Assert.Equal(0, await page.Locator("#UploadedImage").EvaluateAsync<int>("input => input.files.length"));
         await page.Locator("#FinalConfirmation").CheckAsync();
         await Task.WhenAll(
-            page.WaitForURLAsync("**/DiscordResult/**"),
-            page.GetByRole(AriaRole.Button, new() { Name = "Publish to Discord" }).ClickAsync());
-        Assert.True(await page.GetByText("Success", new() { Exact = true }).IsVisibleAsync());
+            page.WaitForURLAsync("**/PublishHistory/**"),
+            page.GetByRole(AriaRole.Button, new() { Name = "Queue Discord publication" }).ClickAsync());
+        await adapter.SendCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await page.ReloadAsync();
+        Assert.True(await page.GetByText("Succeeded", new() { Exact = true }).First.IsVisibleAsync());
+        string historyHtml = await page.ContentAsync();
+        Assert.DoesNotContain("Durable browser send", historyHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Synthetic image", historyHtml, StringComparison.Ordinal);
         Assert.Single(adapter.Sent);
         Assert.True(adapter.Sent[0].Spoiler);
         Assert.True(adapter.Sent[0].EmbedPlacement);
@@ -235,8 +241,8 @@ public sealed partial class AnnouncementBrowserTests
             builder.Services.RemoveAll<IDiscordApi>();
             builder.Services.AddSingleton(adapter);
             builder.Services.AddRazorPages();
-            builder.Services.AddSingleton<DiscordPublicationResultStore>();
             builder.Services.AddSingleton<DiscordEphemeralUploadStore>();
+            builder.Services.AddHostedService<PublicationWorker>();
             builder.Services
                 .AddAuthentication(
                     options =>
@@ -299,6 +305,9 @@ public sealed partial class AnnouncementBrowserTests
 
         internal Guid ConnectionId { get; set; }
 
+        internal TaskCompletionSource<bool> SendCompleted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public Task<DiscordBotIdentity> ValidateBotAsync(string token, CancellationToken cancellationToken) =>
             Task.FromResult(new DiscordBotIdentity("500000000000000006", "Creator Toolkit bot", "500000000000000007"));
 
@@ -343,6 +352,7 @@ public sealed partial class AnnouncementBrowserTests
                 image?.Bytes.ToArray(),
                 image?.Spoiler ?? false,
                 image?.EmbedPlacement ?? false));
+            SendCompleted.TrySetResult(true);
             return Task.FromResult(new DiscordApiSendResult(DiscordDeliveryStatus.Success, "500000000000000099"));
         }
 

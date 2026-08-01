@@ -61,6 +61,14 @@ public sealed class DeleteModel(IAnnouncementService announcementService) : Page
             return Page();
         }
 
+        if (result.Status == AnnouncementOperationStatus.InvalidTransition)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                "Cancel pending publications and wait for processing to finish before deleting this announcement.");
+            return await LoadAsync(cancellationToken) ? Page() : NotFound();
+        }
+
         ModelState.AddModelError(string.Empty, "The announcement could not be deleted.");
         return await LoadAsync(cancellationToken) ? Page() : NotFound();
     }

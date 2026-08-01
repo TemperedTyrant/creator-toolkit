@@ -48,6 +48,13 @@ public enum AuditEventCode
     DiscordPublicationRequested = 34,
     DiscordPublicationChannelSucceeded = 35,
     DiscordPublicationChannelFailed = 36,
+    PublicationQueued = 37,
+    PublicationCancellationRequested = 38,
+    PublicationDeliveryClaimed = 39,
+    PublicationRetryScheduled = 40,
+    PublicationDeliveryCancelled = 41,
+    PublicationFinalized = 42,
+    PublicationPayloadRemoved = 43,
 }
 
 public enum AuditOutcome

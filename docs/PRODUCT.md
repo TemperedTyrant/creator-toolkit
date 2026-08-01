@@ -3,13 +3,14 @@
 ## Status
 
 TemperedTyrant Creator Toolkit is in pre-alpha development. The milestone 1
-foundation, plain-text announcement draft authoring, and foreground Discord bot
-publishing are implemented. Owners,
-Admins, and Editors can create, edit, archive, restore, search, and permanently
+foundation, plain-text announcement draft authoring, and durable Discord bot
+publishing are implemented. Owners, Admins, and Editors can create, edit,
+archive, restore, search, and permanently
 delete drafts; Viewers have read-only access. Owners and Admins manage Discord
-bot connections and channel destinations, and Editors may also send Drafts.
-Scheduling, creator events, durable publishing jobs, and other providers remain
-unimplemented.
+bot connections and channel destinations, and Editors may also queue Drafts.
+Confirmed publications are queued durably, processed by the in-process worker,
+and shown in Publish History with independent destination outcomes. Scheduling,
+creator events, approvals, and other providers remain unimplemented.
 
 **Self-hosted tools and automation for creators and their teams.**
 
@@ -115,16 +116,16 @@ until those areas are implemented.
 ### Editor
 
 An Editor can create, edit, archive, restore, search, and delete announcement
-drafts and may publish a reviewed Discord-specific message in the foreground.
+drafts and may queue a reviewed Discord-specific message for durable delivery.
 Editors cannot manage bot credentials or use mass mentions. Scheduling,
-durable publishing, other integrations, and approval workflows are not
+other integrations, and approval workflows are not
 implemented.
 
 ### Viewer
 
 A Viewer has read-only access to announcements and user-safe errors. A Viewer
-cannot mutate announcements or access technical Debug data. Publishing history
-and connection status are not implemented.
+cannot mutate announcements or access technical Debug data. Viewers may read
+safe publication history but cannot cancel work.
 
 All permissions are enforced on the server. Interface visibility is not an
 authorization boundary.
@@ -145,8 +146,8 @@ records containing safe identifiers and operation metadata, never title or body
 content.
 
 The announcement list supports bounded pagination, status filtering, and
-search over title and body. Foreground Discord publishing is implemented;
-schedules, other providers, approvals, and delivery history are not.
+search over title and body. Durable Discord publishing and content-free Publish
+History are implemented; schedules, other providers, and approvals are not.
 
 ## Key user journeys
 
@@ -189,18 +190,19 @@ installation.
 
 ### Prepare and publish an announcement
 
-Draft authoring and foreground Discord publication are implemented. The user
+Draft authoring and durable Discord publication are implemented. The user
 chooses one server and up to ten saved channels, prepares a plain message or one
 rich embed, explicitly selects any permitted mentions, reviews the form, and
-sends immediately. Each channel shows a safe independent result.
-
-An authorized user chooses a template or begins a draft, reviews the default
-message and any destination override, and previews the actual provider-specific
-rendering before publishing or scheduling.
+queues an immutable encrypted snapshot. The browser is redirected immediately
+to Publish History while the in-process worker delivers each channel
+independently.
 
 Each destination produces its own delivery result. A failure on one destination
-does not prevent another from succeeding. Only one bounded foreground rate-
-limit retry is supported; durable retries and recovery remain unimplemented.
+does not prevent another from succeeding. Transient failures use at most three
+automatic retries after the initial attempt. Queued and retrying work survives
+restart through SQLite leases and stable Discord nonces. Users may cancel
+remaining work, but cancellation cannot remove a message already accepted by
+Discord.
 
 ### Approval
 

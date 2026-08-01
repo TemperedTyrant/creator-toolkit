@@ -7,12 +7,15 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TemperedTyrant.CreatorToolkit.Core.Announcements;
 using TemperedTyrant.CreatorToolkit.Core.Diagnostics;
+using TemperedTyrant.CreatorToolkit.Core.Publications;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Discord;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Publications;
 using TemperedTyrant.CreatorToolkit.IntegrationTests.TestSupport;
 
 namespace TemperedTyrant.CreatorToolkit.IntegrationTests.Web;
@@ -379,6 +382,14 @@ public sealed partial class AnnouncementHttpTests
         await using CreatorToolkitWebFactory factory = new(
             services =>
             {
+                ServiceDescriptor? publicationWorker = services.SingleOrDefault(
+                    value => value.ServiceType == typeof(IHostedService)
+                        && value.ImplementationType == typeof(PublicationWorker));
+                if (publicationWorker is not null)
+                {
+                    services.Remove(publicationWorker);
+                }
+
                 services.RemoveAll<IDiscordApi>();
                 services.AddSingleton<IDiscordApi>(api);
                 services.AddLogging(logging => logging.AddProvider(new TestLoggerProvider(logs)));
@@ -448,6 +459,21 @@ public sealed partial class AnnouncementHttpTests
             publishForm);
 
         Assert.Equal(HttpStatusCode.Redirect, published.StatusCode);
+        Assert.StartsWith("/PublishHistory/", published.Headers.Location?.OriginalString, StringComparison.Ordinal);
+        Assert.Empty(api.SentImages);
+        await using (AsyncServiceScope firstDelivery = factory.Services.CreateAsyncScope())
+        {
+            Assert.True(await firstDelivery.ServiceProvider
+                .GetRequiredService<PublicationProcessor>()
+                .ProcessNextAsync("http-test-worker", CancellationToken.None));
+        }
+        await using (AsyncServiceScope secondDelivery = factory.Services.CreateAsyncScope())
+        {
+            Assert.True(await secondDelivery.ServiceProvider
+                .GetRequiredService<PublicationProcessor>()
+                .ProcessNextAsync("http-test-worker", CancellationToken.None));
+        }
+
         Assert.Equal(2, api.SentImages.Count);
         Assert.All(api.SentImages, sent => Assert.Equal(imageBytes, sent));
         Assert.NotSame(api.SentImages[0], api.SentImages[1]);
@@ -465,11 +491,8 @@ public sealed partial class AnnouncementHttpTests
             duplicateForm);
         string duplicateHtml = await duplicate.Content.ReadAsStringAsync();
 
-        Assert.Equal(HttpStatusCode.OK, duplicate.StatusCode);
-        Assert.Contains(
-            "The selected image has expired. Return to the composer and select it again.",
-            duplicateHtml,
-            StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.Redirect, duplicate.StatusCode);
+        Assert.Equal(published.Headers.Location, duplicate.Headers.Location);
         Assert.Equal(2, api.SentImages.Count);
         Assert.DoesNotContain(byteCanary, duplicateHtml, StringComparison.Ordinal);
         Assert.DoesNotContain(byteCanary, duplicate.Headers.ToString(), StringComparison.Ordinal);
@@ -494,6 +517,111 @@ public sealed partial class AnnouncementHttpTests
                     .Select(value => value.Reference + value.ErrorCode + value.Operation + value.ExceptionType)
                     .ToListAsync()),
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PublishHistoryIsContentFreeAndViewerCannotCancelByDirectPost()
+    {
+        const string queuedContentCanary = "history-content-canary-b1f587035645";
+        var api = new HttpDiscordApi();
+        await using CreatorToolkitWebFactory factory = new(
+            services =>
+            {
+                ServiceDescriptor? publicationWorker = services.SingleOrDefault(
+                    value => value.ServiceType == typeof(IHostedService)
+                        && value.ImplementationType == typeof(PublicationWorker));
+                if (publicationWorker is not null)
+                {
+                    services.Remove(publicationWorker);
+                }
+
+                services.RemoveAll<IDiscordApi>();
+                services.AddSingleton<IDiscordApi>(api);
+            });
+        Guid ownerId = await InitializeOwnerAsync(factory.Services);
+        _ = await CreateAndActivateAsync(
+            factory.Services,
+            ownerId,
+            "history-viewer",
+            SystemRoles.Viewer);
+        Guid announcementId = await CreateDraftAsync(factory.Services, ownerId);
+        Guid publicationId;
+        await using (AsyncServiceScope setup = factory.Services.CreateAsyncScope())
+        {
+            IDiscordConfigurationService configuration = setup.ServiceProvider
+                .GetRequiredService<IDiscordConfigurationService>();
+            Guid connectionId = Assert.IsType<Guid>((await configuration.CreateAsync(
+                "Discord",
+                DiscordTokenCanary,
+                ownerId)).Id);
+            await configuration.SaveDestinationsAsync(
+                connectionId,
+                DiscordGuildId,
+                [DiscordChannelId],
+                ownerId);
+            DiscordDestinationListItem destination = Assert.Single(
+                (await configuration.GetAsync(connectionId))!.Destinations);
+            DiscordPublicationEnqueueResult queued = await setup.ServiceProvider
+                .GetRequiredService<IDiscordPublishingService>()
+                .EnqueueAsync(
+                    new DiscordPublishRequest(
+                        Guid.NewGuid(),
+                        announcementId,
+                        1,
+                        connectionId,
+                        DiscordGuildId,
+                        [destination.Id],
+                        DiscordMessageMode.Plain,
+                        queuedContentCanary,
+                        false,
+                        null,
+                        DiscordMentionSelection.None,
+                        false,
+                        null,
+                        null),
+                    false,
+                    ownerId);
+            publicationId = queued.PublicationId;
+        }
+
+        using HttpClient owner = CreateClient(factory);
+        using HttpClient viewer = CreateClient(factory);
+        await LoginAsync(owner, "owner-local", OwnerPassword);
+        await LoginAsync(viewer, "history-viewer", UserPassword);
+        string route = $"/PublishHistory/{publicationId}";
+        HttpResponseMessage viewerPage = await viewer.GetAsync(route);
+        string viewerHtml = await viewerPage.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, viewerPage.StatusCode);
+        Assert.Contains("no-store", viewerPage.Headers.CacheControl?.ToString(), StringComparison.Ordinal);
+        Assert.False(
+            viewerHtml.Contains(queuedContentCanary, StringComparison.Ordinal),
+            "The queued-content canary appeared in publication history.");
+        Assert.DoesNotContain("Cancel remaining sends", viewerHtml, StringComparison.Ordinal);
+
+        using var viewerCancel = new HttpRequestMessage(
+            HttpMethod.Post,
+            route + "?handler=Cancel")
+        {
+            Content = Form(
+                ("Id", publicationId.ToString()),
+                ("Revision", "1"),
+                ("__RequestVerificationToken", GetAntiforgeryToken(viewerHtml))),
+        };
+        AssertAccessDenied(await viewer.SendAsync(viewerCancel));
+
+        string ownerHtml = await owner.GetStringAsync(route);
+        using var ownerCancel = new HttpRequestMessage(
+            HttpMethod.Post,
+            route + "?handler=Cancel")
+        {
+            Content = Form(
+                ("Id", publicationId.ToString()),
+                ("Revision", "1"),
+                ("__RequestVerificationToken", GetAntiforgeryToken(ownerHtml))),
+        };
+        HttpResponseMessage cancelled = await owner.SendAsync(ownerCancel);
+        Assert.Equal(HttpStatusCode.Redirect, cancelled.StatusCode);
+        Assert.StartsWith(route, cancelled.Headers.Location?.OriginalString, StringComparison.Ordinal);
     }
 
     private static MultipartFormDataContent PublicationMultipartForm(

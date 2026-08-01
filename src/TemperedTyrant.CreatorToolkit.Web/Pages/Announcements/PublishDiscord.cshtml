@@ -35,11 +35,11 @@
 @if (Model.Context is not null)
 {
     <header class="page-heading split-heading">
-        <div><h1>Publish to Discord</h1><p class="lede">Prepare a foreground send for <strong>@Model.Context.AnnouncementTitle</strong>.</p></div>
+        <div><h1>Publish to Discord</h1><p class="lede">Prepare a durable Discord publication for <strong>@Model.Context.AnnouncementTitle</strong>.</p></div>
         <a asp-page="/Announcements/Details" asp-route-id="@Model.Id">Cancel</a>
     </header>
     <section class="notice">
-        <p>This sends immediately to Discord. Scheduling, durable jobs, background retries, and publish history are not implemented.</p>
+        <p>Confirmation queues the reviewed publication in SQLite and redirects to Publish History. Delivery continues after browser disconnection and recovers after application restart. Scheduling is not implemented.</p>
     </section>
     <section class="card">
         <h2>1. Server and channels</h2>
@@ -160,7 +160,7 @@
                 <h2>Image</h2>
                 <p>Choose one uploaded JPEG, PNG, WebP, or GIF (maximum 8 MiB), or one HTTPS remote image URL. Creator Toolkit never fetches remote URLs.</p>
                 <label asp-for="UploadedImage">Upload image</label><input asp-for="UploadedImage" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
-                <p class="muted">A validated upload is held only in bounded process memory for up to 10 minutes between Review and Publish. It is removed after publication and lost on restart.</p>
+                <p class="muted">Before confirmation, a validated upload is held only in bounded process memory for up to 10 minutes and is lost on restart. Successful confirmation stores it only inside the encrypted pending publication payload.</p>
                 <label asp-for="RemoteImageUrl">HTTPS remote image URL</label><input asp-for="RemoteImageUrl" type="url" maxlength="2048">
                 <label asp-for="ImageAltText">Image alt text</label><input asp-for="ImageAltText" maxlength="1024">
                 <label class="choice"><input asp-for="ImageSpoiler"> Mark uploaded image as spoiler</label>
@@ -194,9 +194,9 @@
                 {
                     <div class="notice" role="status"><p>The server accepted this review step. Recheck the summary and complete the explicit confirmation below. A validated uploaded image is staged for this review even though the browser file control is now blank. If you leave this flow or change the image mode, select the file again.</p></div>
                     <h3>4. Confirmation</h3>
-                    <label class="choice"><input asp-for="FinalConfirmation" required> I reviewed this foreground publication and want to send it now.</label>
+                    <label class="choice"><input asp-for="FinalConfirmation" required> I reviewed this publication and want to queue it for Discord delivery.</label>
                     <span asp-validation-for="FinalConfirmation" class="field-validation-error"></span>
-                    <button type="submit">Publish to Discord</button>
+                    <button type="submit">Queue Discord publication</button>
                     <button class="secondary" type="submit" asp-page-handler="Review">Review publication again</button>
                 }
             </section>

@@ -60,16 +60,20 @@ non-retrievability, and application/database/container smoke tests pass.
 checkpoint also implements plain-text announcement draft creation, listing,
 details, editing, archive/restore, permanent deletion, search, filtering,
 pagination, revision-bound concurrency, role authorization, and transactional
-audit records. Drafts persist in SQLite across application restarts. Foreground
-Discord bot setup, channel discovery, permission-aware destination saving, and
-manual per-channel publishing are also implemented. Scheduling, durable jobs,
-automatic retries, publishing history, and other providers are not.
+audit records. Drafts persist in SQLite across application restarts. Discord
+bot setup, channel discovery, permission-aware destination saving, and durable
+manual per-channel publishing are also implemented. SQLite leasing, restart
+recovery, bounded retries, cancellation, encrypted pending payloads, and
+content-free Publish History are implemented. Scheduling, approvals, creator
+events, and other providers are not.
 
 ## 2. Core announcements, approvals, and durable publishing
 
-The remaining items in this milestone are planned future checkpoints. The
-implemented authoring aggregate contains only Draft and Archived states and has
-no destination, delivery, scheduling, approval, provider, or job behavior.
+The provider-neutral Publication, delivery, and attempt records now support
+durable manual Discord publishing. Approval, creator-event, template, workflow,
+scheduling, jitter, and manual-retry items remain future checkpoints. The
+Announcement authoring aggregate itself still contains only Draft and Archived
+states.
 
 Deliver:
 
@@ -94,8 +98,8 @@ one destination failure does not block another.
 least-privilege installation links, live server/channel/role/member discovery,
 effective channel-permission calculation, saved destinations, fixed test
 messages, safe mention controls, plain and rich-embed composition, request-only
-images, foreground Create Message delivery, bounded rate-limit handling, and
-independent per-channel results. The bot transport uses outbound Discord HTTP
+images, durable Create Message delivery, bounded retry handling, cancellation,
+and independent per-channel results. The bot transport uses outbound Discord HTTP
 API v10 only; no Gateway, incoming event, slash command, or public callback is
 present.
 

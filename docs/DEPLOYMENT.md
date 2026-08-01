@@ -118,6 +118,13 @@ application and take a coordinated backup before upgrading; do not live-copy
 individual SQLite files. The migration adds the announcement table and indexes
 without modifying Identity, audit, diagnostics, or protected-secret data.
 
+Pending Discord publications, including their encrypted immutable payloads and
+uploaded image bytes, are also stored in SQLite. Data Protection keys are
+required to resume them after restart. Always stop the application and back up
+or restore the database and key ring together. A restored worker recovers due
+or expired-leased deliveries automatically. Terminal publications retain only
+safe history metadata because their protected payload ciphertext is removed.
+
 ## Configuration
 
 `.env.example` contains safe defaults and commented placeholders. Copy it to the

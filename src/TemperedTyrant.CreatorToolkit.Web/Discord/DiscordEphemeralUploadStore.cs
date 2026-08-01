@@ -133,6 +133,28 @@ public sealed class DiscordEphemeralUploadStore(TimeProvider timeProvider) : IDi
         }
     }
 
+    internal DiscordValidatedImage? Copy(
+        string handle,
+        DiscordEphemeralUploadBinding binding)
+    {
+        lock (gate)
+        {
+            if (disposed)
+            {
+                return null;
+            }
+
+            RemoveExpired(timeProvider.GetUtcNow());
+            if (!entries.TryGetValue(handle, out Entry? entry)
+                || entry.Binding != binding)
+            {
+                return null;
+            }
+
+            return entry.Image with { Bytes = entry.Image.Bytes.ToArray() };
+        }
+    }
+
     internal bool Remove(string handle, DiscordEphemeralUploadBinding binding)
     {
         lock (gate)

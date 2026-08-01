@@ -290,10 +290,6 @@ public sealed record DiscordDeliveryResult(
     string? DiscordMessageId,
     string CorrectiveAction);
 
-public sealed record DiscordPublicationResult(
-    Guid SubmissionId,
-    IReadOnlyList<DiscordDeliveryResult> Channels);
-
 public interface IDiscordPublishingService
 {
     Task<DiscordPublishContext?> GetContextAsync(
@@ -312,12 +308,25 @@ public interface IDiscordPublishingService
         string userId,
         CancellationToken cancellationToken = default);
 
-    Task<DiscordPublicationResult> PublishAsync(
+    Task ValidateReviewAsync(
+        DiscordPublishRequest request,
+        bool canUseMassMentions,
+        DiscordGuildDiscovery discovery,
+        CancellationToken cancellationToken = default);
+
+    Task<Guid?> FindEnqueuedAsync(
+        Guid submissionId,
+        Guid actorUserId,
+        CancellationToken cancellationToken = default);
+
+    Task<DiscordPublicationEnqueueResult> EnqueueAsync(
         DiscordPublishRequest request,
         bool canUseMassMentions,
         Guid actorUserId,
         CancellationToken cancellationToken = default);
 }
+
+public sealed record DiscordPublicationEnqueueResult(Guid PublicationId, bool Existing);
 
 public sealed class DiscordPublicationValidationException(string message) : Exception(message);
 
@@ -420,12 +429,6 @@ internal sealed record DiscordApiSendResult(
     DiscordDeliveryStatus Status,
     string? MessageId = null,
     TimeSpan? RetryAfter = null);
-
-internal sealed record DiscordPublishingOptions(TimeSpan OverallTimeout)
-{
-    internal static DiscordPublishingOptions Default { get; } =
-        new(TimeSpan.FromSeconds(30));
-}
 
 public sealed class DiscordApiAuthenticationException : Exception;
 

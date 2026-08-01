@@ -5,9 +5,11 @@ using TemperedTyrant.CreatorToolkit.Core.Announcements;
 using TemperedTyrant.CreatorToolkit.Core.Audit;
 using TemperedTyrant.CreatorToolkit.Core.Diagnostics;
 using TemperedTyrant.CreatorToolkit.Core.Identity;
+using TemperedTyrant.CreatorToolkit.Core.Publications;
 using TemperedTyrant.CreatorToolkit.Core.Setup;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Discord;
 using TemperedTyrant.CreatorToolkit.Infrastructure.Identity;
+using TemperedTyrant.CreatorToolkit.Infrastructure.Publications;
 
 namespace TemperedTyrant.CreatorToolkit.Infrastructure.Persistence;
 
@@ -35,9 +37,17 @@ public sealed class CreatorToolkitDbContext
 
     public DbSet<DiscordDestination> DiscordDestinations => Set<DiscordDestination>();
 
+    public DbSet<Publication> Publications => Set<Publication>();
+
+    public DbSet<PublicationDelivery> PublicationDeliveries => Set<PublicationDelivery>();
+
+    public DbSet<PublicationAttempt> PublicationAttempts => Set<PublicationAttempt>();
+
     public DbSet<DiagnosticRecord> DiagnosticRecords => Set<DiagnosticRecord>();
 
     internal DbSet<ProtectedSecretRecord> ProtectedSecrets => Set<ProtectedSecretRecord>();
+
+    internal DbSet<PublicationPayload> PublicationPayloads => Set<PublicationPayload>();
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
@@ -69,6 +79,7 @@ public sealed class CreatorToolkitDbContext
         ConfigureDiagnosticRecord(builder);
         ConfigureAnnouncement(builder);
         ConfigureDiscord(builder);
+        ConfigurePublications(builder);
     }
 
     private static void ConfigureIdentity(ModelBuilder builder)
@@ -525,6 +536,110 @@ public sealed class CreatorToolkitDbContext
                 value => value.ToUnixTimeMilliseconds(),
                 value => DateTimeOffset.FromUnixTimeMilliseconds(value))
             .IsRequired();
+    }
+
+    private static void ConfigurePublications(ModelBuilder builder)
+    {
+        builder.Entity<Publication>(publication =>
+        {
+            publication.ToTable(
+                "Publications",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_Publications_Status",
+                        "\"Status\" IN ('Queued','Processing','RetryScheduled','Succeeded','PartiallySucceeded','Failed','Cancelling','Cancelled')");
+                    table.HasCheckConstraint("CK_Publications_Counts", "\"TotalDeliveryCount\" BETWEEN 1 AND 10 AND \"SuccessfulDeliveryCount\" >= 0 AND \"FailedDeliveryCount\" >= 0 AND \"CancelledDeliveryCount\" >= 0 AND \"SuccessfulDeliveryCount\" + \"FailedDeliveryCount\" + \"CancelledDeliveryCount\" <= \"TotalDeliveryCount\"");
+                    table.HasCheckConstraint("CK_Publications_Revision", "\"Revision\" >= 1");
+                });
+            publication.HasKey(value => value.Id);
+            publication.Property(value => value.Id).ValueGeneratedNever();
+            publication.Property(value => value.Provider).HasConversion<string>().HasMaxLength(16);
+            publication.Property(value => value.Status).HasConversion<string>().HasMaxLength(32);
+            ConfigureUnixTimestamp(publication.Property(value => value.RequestedAtUtc));
+            ConfigureUnixTimestamp(publication.Property(value => value.UpdatedAtUtc));
+            ConfigureOptionalUnixTimestamp(publication.Property(value => value.CancellationRequestedAtUtc));
+            publication.Property(value => value.Revision).IsConcurrencyToken();
+            publication.HasIndex(value => value.SubmissionId).IsUnique();
+            publication.HasIndex(value => new { value.Status, value.UpdatedAtUtc }).IsDescending(false, true);
+            publication.HasIndex(value => value.RequestedAtUtc).IsDescending(true);
+            publication
+                .HasOne<Announcement>()
+                .WithMany()
+                .HasForeignKey(value => value.AnnouncementId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<PublicationDelivery>(delivery =>
+        {
+            delivery.ToTable(
+                "PublicationDeliveries",
+                table =>
+                {
+                    table.HasCheckConstraint("CK_PublicationDeliveries_Status", "\"Status\" IN ('Queued','Leased','RetryScheduled','Succeeded','FailedPermanent','Cancelled')");
+                    table.HasCheckConstraint("CK_PublicationDeliveries_Attempts", "\"AttemptCount\" BETWEEN 0 AND 4");
+                    table.HasCheckConstraint("CK_PublicationDeliveries_Revision", "\"Revision\" >= 1");
+                    table.HasCheckConstraint("CK_PublicationDeliveries_Lease", "(\"Status\" = 'Leased' AND \"LeaseOwner\" IS NOT NULL AND \"LeaseExpiresAtUtc\" IS NOT NULL) OR (\"Status\" <> 'Leased' AND \"LeaseOwner\" IS NULL AND \"LeaseExpiresAtUtc\" IS NULL)");
+                });
+            delivery.HasKey(value => value.Id);
+            delivery.Property(value => value.Id).ValueGeneratedNever();
+            delivery.Property(value => value.ProviderDestinationId).HasMaxLength(20).IsRequired();
+            delivery.Property(value => value.ServerNameSnapshot).HasMaxLength(100).IsRequired();
+            delivery.Property(value => value.ChannelNameSnapshot).HasMaxLength(100).IsRequired();
+            delivery.Property(value => value.Status).HasConversion<string>().HasMaxLength(32);
+            delivery.Property(value => value.LeaseOwner).HasMaxLength(64);
+            delivery.Property(value => value.StableNonce).HasMaxLength(25).IsRequired();
+            delivery.Property(value => value.LastSafeOutcome).HasMaxLength(64);
+            delivery.Property(value => value.ExternalMessageId).HasMaxLength(20);
+            ConfigureUnixTimestamp(delivery.Property(value => value.NextAttemptAtUtc));
+            ConfigureOptionalUnixTimestamp(delivery.Property(value => value.LeaseExpiresAtUtc));
+            ConfigureOptionalUnixTimestamp(delivery.Property(value => value.StartedAtUtc));
+            ConfigureOptionalUnixTimestamp(delivery.Property(value => value.CompletedAtUtc));
+            delivery.Property(value => value.Revision).IsConcurrencyToken();
+            delivery.HasIndex(value => new { value.PublicationId, value.LocalDestinationId }).IsUnique();
+            delivery.HasIndex(value => new { value.Status, value.NextAttemptAtUtc });
+            delivery.HasIndex(value => new { value.Status, value.LeaseExpiresAtUtc });
+            delivery.HasOne(value => value.Publication).WithMany(value => value.Deliveries)
+                .HasForeignKey(value => value.PublicationId).OnDelete(DeleteBehavior.Cascade);
+            delivery.HasOne<DiscordDestination>().WithMany().HasForeignKey(value => value.LocalDestinationId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<PublicationAttempt>(attempt =>
+        {
+            attempt.ToTable("PublicationAttempts");
+            attempt.HasKey(value => value.Id);
+            attempt.Property(value => value.Id).ValueGeneratedNever();
+            attempt.Property(value => value.SafeOutcome).HasMaxLength(64).IsRequired();
+            attempt.Property(value => value.ExternalMessageId).HasMaxLength(20);
+            attempt.Property(value => value.DiagnosticReference).HasMaxLength(64);
+            ConfigureUnixTimestamp(attempt.Property(value => value.StartedAtUtc));
+            ConfigureOptionalUnixTimestamp(attempt.Property(value => value.CompletedAtUtc));
+            ConfigureOptionalUnixTimestamp(attempt.Property(value => value.RetryScheduledForUtc));
+            attempt.HasIndex(value => new { value.PublicationDeliveryId, value.AttemptNumber }).IsUnique();
+            attempt.HasOne(value => value.Delivery).WithMany(value => value.Attempts)
+                .HasForeignKey(value => value.PublicationDeliveryId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<PublicationPayload>(payload =>
+        {
+            payload.ToTable("PublicationPayloads", table => table.HasCheckConstraint(
+                "CK_PublicationPayloads_Size",
+                $"\"PlaintextSize\" BETWEEN 1 AND {PublicationPayloadProtector.MaximumPlaintextBytes} AND length(\"Ciphertext\") BETWEEN 1 AND {PublicationPayloadProtector.MaximumCiphertextBytes}"));
+            payload.HasKey(value => value.PublicationId);
+            payload.Property(value => value.Ciphertext).IsRequired();
+            ConfigureUnixTimestamp(payload.Property(value => value.CreatedAtUtc));
+            payload.HasOne(value => value.Publication).WithOne().HasForeignKey<PublicationPayload>(value => value.PublicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static void ConfigureOptionalUnixTimestamp(
+        Microsoft.EntityFrameworkCore.Metadata.Builders.PropertyBuilder<DateTimeOffset?> property)
+    {
+        property.HasConversion(
+            value => value.HasValue ? value.Value.ToUnixTimeMilliseconds() : (long?)null,
+            value => value.HasValue ? DateTimeOffset.FromUnixTimeMilliseconds(value.Value) : null);
     }
 
     private void RejectAuditMutation()

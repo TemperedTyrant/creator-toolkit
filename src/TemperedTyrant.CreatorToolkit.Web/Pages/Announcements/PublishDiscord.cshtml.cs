@@ -19,7 +19,6 @@ namespace TemperedTyrant.CreatorToolkit.Web.Pages.Announcements;
 public sealed class PublishDiscordModel(
     IDiscordPublishingService publishing,
     IDiscordConfigurationService configuration,
-    DiscordPublicationResultStore resultStore,
     DiscordEphemeralUploadStore uploadStore,
     IDataProtectionProvider dataProtectionProvider) : PageModel
 {
@@ -240,6 +239,32 @@ public sealed class PublishDiscordModel(
         DiscordEphemeralUploadBinding binding = UploadBinding(actor.Value);
         try
         {
+            if (ModelState.IsValid && Discovery is not null)
+            {
+                try
+                {
+                    await publishing.ValidateReviewAsync(
+                        CreateRequest(image),
+                        CanUseMassMentions,
+                        Discovery,
+                        cancellationToken);
+                }
+                catch (Exception exception) when (
+                    exception is ArgumentException
+                        or DiscordPublicationValidationException
+                        or DiscordMessageValidationException
+                        or DiscordApiAuthenticationException
+                        or DiscordApiUnavailableException
+                        or DiscordServerInformationException)
+                {
+                    ModelState.AddModelError(
+                        string.Empty,
+                        exception is DiscordPublicationValidationException validation
+                            ? validation.Message
+                            : "The reviewed Discord publication could not be validated safely.");
+                }
+            }
+
             if (ModelState.IsValid)
             {
                 if (image is not null)
@@ -306,31 +331,19 @@ public sealed class PublishDiscordModel(
             ModelState.AddModelError(nameof(FinalConfirmation), "Review and confirm the Discord publication before sending.");
         }
 
-        if (!await LoadAsync(cancellationToken))
+        if (!await LoadContextOnlyAsync(cancellationToken))
         {
             uploadStore.RemoveForSubmission(actor.Value, SubmissionId);
             return NotFound();
         }
 
-        DiscordEphemeralUploadLease? uploadLease = null;
+        DiscordValidatedImage? stagedImage = null;
         try
         {
             List<string> users = UserIds.ToList();
             if (!string.IsNullOrWhiteSpace(ManualUserId))
             {
-                DiscordGuildMember? member = await publishing.ValidateMemberAsync(
-                    ConnectionId,
-                    GuildId,
-                    ManualUserId.Trim(),
-                    cancellationToken);
-                if (member is null)
-                {
-                    ModelState.AddModelError(nameof(ManualUserId), "That Discord user is not a member of the selected server.");
-                }
-                else
-                {
-                    users.Add(member.UserId);
-                }
+                users.Add(ManualUserId.Trim());
             }
 
             ReviewState? review = ReadReviewState();
@@ -357,12 +370,24 @@ public sealed class PublishDiscordModel(
                 return Page();
             }
 
+            Guid? existingPublication = await publishing.FindEnqueuedAsync(
+                SubmissionId,
+                actor.Value,
+                cancellationToken);
+            if (existingPublication is not null)
+            {
+                uploadStore.RemoveForSubmission(actor.Value, SubmissionId);
+                return RedirectToPage(
+                    "/PublishHistory/Details",
+                    new { id = existingPublication.Value });
+            }
+
             if (review!.UploadHandle is not null)
             {
-                uploadLease = uploadStore.Consume(
+                stagedImage = uploadStore.Copy(
                     review.UploadHandle,
                     UploadBinding(actor.Value));
-                if (uploadLease is null)
+                if (stagedImage is null)
                 {
                     ReviewComplete = false;
                     ReviewToken = null;
@@ -375,42 +400,24 @@ public sealed class PublishDiscordModel(
                 }
             }
 
-            DiscordPublishRequest request = new(
-                SubmissionId,
-                Id,
-                AnnouncementRevision,
-                ConnectionId,
-                GuildId,
-                DestinationIds,
-                Mode,
-                PlainContent,
-                ShowLinkPreviews,
-                new DiscordEmbedInput(
-                    EmbedMessageText,
-                    EmbedTitle,
-                    EmbedDescription,
-                    EmbedTitleUrl,
-                    EmbedColor,
-                    EmbedFooter,
-                    EmbedImageUrl,
-                    EmbedThumbnailUrl),
-                new DiscordMentionSelection(MentionEveryone, MentionHere, RoleIds, users),
-                MassMentionConfirmed,
-                RemoteImageUrl,
-                uploadLease?.Image);
-            DiscordPublicationResult result = await publishing.PublishAsync(
+            DiscordPublishRequest request = CreateRequest(stagedImage, users);
+            DiscordPublicationEnqueueResult result = await publishing.EnqueueAsync(
                 request,
                 CanUseMassMentions,
                 actor.Value,
                 cancellationToken);
-            resultStore.Put(actor.Value, result);
+            if (review.UploadHandle is not null)
+            {
+                _ = uploadStore.Remove(review.UploadHandle, UploadBinding(actor.Value));
+            }
+
             return RedirectToPage(
-                "/Announcements/DiscordResult",
-                new { id = Id, submissionId = SubmissionId });
+                "/PublishHistory/Details",
+                new { id = result.PublicationId });
         }
         catch (DiscordPublicationValidationException exception)
         {
-            if (uploadLease is not null)
+            if (stagedImage is not null)
             {
                 ReviewComplete = false;
                 ReviewToken = null;
@@ -419,21 +426,48 @@ public sealed class PublishDiscordModel(
             ModelState.AddModelError(string.Empty, exception.Message);
             return Page();
         }
-        catch (Exception exception) when (exception is DiscordApiAuthenticationException or DiscordApiUnavailableException)
-        {
-            if (uploadLease is not null)
-            {
-                ReviewComplete = false;
-                ReviewToken = null;
-            }
-
-            ModelState.AddModelError(string.Empty, "Discord is unavailable. No message content or credentials were exposed.");
-            return Page();
-        }
         finally
         {
-            uploadLease?.Dispose();
+            if (stagedImage is not null)
+            {
+                CryptographicOperations.ZeroMemory(stagedImage.Bytes);
+            }
         }
+    }
+
+    private DiscordPublishRequest CreateRequest(
+        DiscordValidatedImage? image,
+        IReadOnlyList<string>? selectedUsers = null)
+    {
+        List<string> users = selectedUsers?.ToList() ?? UserIds.ToList();
+        if (selectedUsers is null && !string.IsNullOrWhiteSpace(ManualUserId))
+        {
+            users.Add(ManualUserId.Trim());
+        }
+
+        return new DiscordPublishRequest(
+            SubmissionId,
+            Id,
+            AnnouncementRevision,
+            ConnectionId,
+            GuildId,
+            DestinationIds,
+            Mode,
+            PlainContent,
+            ShowLinkPreviews,
+            new DiscordEmbedInput(
+                EmbedMessageText,
+                EmbedTitle,
+                EmbedDescription,
+                EmbedTitleUrl,
+                EmbedColor,
+                EmbedFooter,
+                EmbedImageUrl,
+                EmbedThumbnailUrl),
+            new DiscordMentionSelection(MentionEveryone, MentionHere, RoleIds, users),
+            MassMentionConfirmed,
+            RemoteImageUrl,
+            image);
     }
 
     private async Task<IActionResult> SearchMembersPartialAsync(CancellationToken cancellationToken)
@@ -527,6 +561,12 @@ public sealed class PublishDiscordModel(
         }
 
         return true;
+    }
+
+    private async Task<bool> LoadContextOnlyAsync(CancellationToken token)
+    {
+        Context = await publishing.GetContextAsync(Id, token);
+        return Context is not null;
     }
 
     private async Task<DiscordValidatedImage?> ReadImageAsync(CancellationToken token)

@@ -76,6 +76,14 @@ public sealed class AuditRecord
                     "discord.publication-channel-succeeded",
                 AuditEventCode.DiscordPublicationChannelFailed =>
                     "discord.publication-channel-failed",
+                AuditEventCode.PublicationQueued => "publication.queued",
+                AuditEventCode.PublicationCancellationRequested =>
+                    "publication.cancellation-requested",
+                AuditEventCode.PublicationDeliveryClaimed => "publication.delivery-claimed",
+                AuditEventCode.PublicationRetryScheduled => "publication.retry-scheduled",
+                AuditEventCode.PublicationDeliveryCancelled => "publication.delivery-cancelled",
+                AuditEventCode.PublicationFinalized => "publication.finalized",
+                AuditEventCode.PublicationPayloadRemoved => "publication.payload-removed",
                 _ => throw new ArgumentOutOfRangeException(
                     nameof(auditEvent),
                     "The audit event code is not supported."),

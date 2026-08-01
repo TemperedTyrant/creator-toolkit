@@ -196,64 +196,50 @@ internal sealed class DiscordHttpApi(HttpClient httpClient) : IDiscordApi
         CancellationToken cancellationToken)
     {
         DiscordSnowflake.Require(channelId);
-        for (int attempt = 0; attempt < 2; attempt++)
+        using HttpRequestMessage message = new(
+            HttpMethod.Post,
+            $"channels/{channelId}/messages");
+        SetAuthorization(message, token);
+        if (image is null)
         {
-            using HttpRequestMessage message = new(
-                HttpMethod.Post,
-                $"channels/{channelId}/messages");
-            SetAuthorization(message, token);
-            if (image is null)
-            {
-                message.Content = JsonContent.Create(request, options: JsonOptions);
-            }
-            else
-            {
-                MultipartFormDataContent multipart = new();
-                multipart.Add(
-                    new StringContent(
-                        JsonSerializer.Serialize(request, JsonOptions),
-                        Encoding.UTF8,
-                        "application/json"),
-                    "payload_json");
-                ByteArrayContent file = new(image.Bytes);
-                file.Headers.ContentType = MediaTypeHeaderValue.Parse(image.ContentType);
-                multipart.Add(file, "files[0]", image.OutboundFileName);
-                message.Content = multipart;
-            }
-
-            using HttpResponseMessage response = await httpClient.SendAsync(
-                message,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken);
-            if (response.IsSuccessStatusCode)
-            {
-                DiscordMessageResponseDto body = await ReadJsonAsync<DiscordMessageResponseDto>(
-                    response,
-                    MaximumSuccessBytes,
-                    cancellationToken);
-                return new DiscordApiSendResult(
-                    DiscordDeliveryStatus.Success,
-                    DiscordSnowflake.IsValid(body.Id) ? body.Id : null);
-            }
-
-            DiscordDeliveryStatus status = Classify(response.StatusCode);
-            if (status != DiscordDeliveryStatus.RateLimited || attempt > 0)
-            {
-                await DrainBoundedAsync(response, MaximumErrorBytes, cancellationToken);
-                return new DiscordApiSendResult(status);
-            }
-
-            TimeSpan? retryAfter = ParseRetryAfter(response);
-            await DrainBoundedAsync(response, MaximumErrorBytes, cancellationToken);
-            if (retryAfter is null || retryAfter <= TimeSpan.Zero || retryAfter > TimeSpan.FromSeconds(2))
-            {
-                return new DiscordApiSendResult(status, RetryAfter: retryAfter);
-            }
-
-            await Task.Delay(retryAfter.Value, cancellationToken);
+            message.Content = JsonContent.Create(request, options: JsonOptions);
+        }
+        else
+        {
+            MultipartFormDataContent multipart = new();
+            multipart.Add(
+                new StringContent(
+                    JsonSerializer.Serialize(request, JsonOptions),
+                    Encoding.UTF8,
+                    "application/json"),
+                "payload_json");
+            ByteArrayContent file = new(image.Bytes);
+            file.Headers.ContentType = MediaTypeHeaderValue.Parse(image.ContentType);
+            multipart.Add(file, "files[0]", image.OutboundFileName);
+            message.Content = multipart;
         }
 
-        return new DiscordApiSendResult(DiscordDeliveryStatus.RateLimited);
+        using HttpResponseMessage response = await httpClient.SendAsync(
+            message,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            DiscordMessageResponseDto body = await ReadJsonAsync<DiscordMessageResponseDto>(
+                response,
+                MaximumSuccessBytes,
+                cancellationToken);
+            return new DiscordApiSendResult(
+                DiscordDeliveryStatus.Success,
+                DiscordSnowflake.IsValid(body.Id) ? body.Id : null);
+        }
+
+        DiscordDeliveryStatus status = Classify(response.StatusCode);
+        TimeSpan? retryAfter = status == DiscordDeliveryStatus.RateLimited
+            ? ParseRetryAfter(response)
+            : null;
+        await DrainBoundedAsync(response, MaximumErrorBytes, cancellationToken);
+        return new DiscordApiSendResult(status, RetryAfter: retryAfter);
     }
 
     private async Task<T> GetAsync<T>(

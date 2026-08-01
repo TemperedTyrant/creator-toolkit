@@ -439,31 +439,19 @@ public sealed class DiscordProtocolTests
     }
 
     [Fact]
-    public async Task RateLimitRetriesAtMostOnceOnlyWhenHeaderFitsForegroundBound()
+    public async Task RateLimitIsReturnedToDurableProcessorWithoutAnInlineRetry()
     {
-        var shortHandler = new SequenceHandler(
-            CreateRateLimited("0.001"),
-            CreateSuccess());
-        using var shortClient = new HttpClient(shortHandler) { BaseAddress = DiscordHttpApi.ApiBaseAddress };
-        DiscordApiSendResult recovered = await new DiscordHttpApi(shortClient).SendMessageAsync(
-            "synthetic-rate-token",
-            ChannelId,
-            CreateSafeMessage(),
-            null,
-            CancellationToken.None);
-        Assert.Equal(DiscordDeliveryStatus.Success, recovered.Status);
-        Assert.Equal(2, shortHandler.CallCount);
-
-        var longHandler = new SequenceHandler(CreateRateLimited("5"), CreateSuccess());
-        using var longClient = new HttpClient(longHandler) { BaseAddress = DiscordHttpApi.ApiBaseAddress };
-        DiscordApiSendResult limited = await new DiscordHttpApi(longClient).SendMessageAsync(
+        var handler = new SequenceHandler(CreateRateLimited("0.125"), CreateSuccess());
+        using var client = new HttpClient(handler) { BaseAddress = DiscordHttpApi.ApiBaseAddress };
+        DiscordApiSendResult limited = await new DiscordHttpApi(client).SendMessageAsync(
             "synthetic-rate-token",
             ChannelId,
             CreateSafeMessage(),
             null,
             CancellationToken.None);
         Assert.Equal(DiscordDeliveryStatus.RateLimited, limited.Status);
-        Assert.Equal(1, longHandler.CallCount);
+        Assert.Equal(TimeSpan.FromMilliseconds(125), limited.RetryAfter);
+        Assert.Equal(1, handler.CallCount);
     }
 
     [Theory]
